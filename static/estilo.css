@@ -1,0 +1,160 @@
+:root {
+  --nCorFundo: #0f1115;
+  --nCorPainel: #171a21;
+  --nCorBorda: #2a2f3a;
+  --nCorTexto: #e6e8eb;
+  --nCorTextoFraco: #9aa1ac;
+  --nCorPrimaria: #4f8cff;
+  --nCorErro: #ff5c5c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--nCorFundo);
+  color: var(--nCorTexto);
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+}
+
+.oContainer {
+  width: 100%;
+  max-width: 640px;
+  background: var(--nCorPainel);
+  border: 1px solid var(--nCorBorda);
+  border-radius: 12px;
+  padding: 32px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 1.6rem;
+}
+
+.sSubtitulo {
+  margin: 0 0 24px;
+  color: var(--nCorTextoFraco);
+  font-size: 0.9rem;
+}
+
+label {
+  display: block;
+  margin: 16px 0 6px;
+  font-size: 0.85rem;
+  color: var(--nCorTextoFraco);
+}
+
+textarea,
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  background: #0d0f13;
+  border: 1px solid var(--nCorBorda);
+  border-radius: 8px;
+  color: var(--nCorTexto);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+.oLinha {
+  display: flex;
+  gap: 16px;
+}
+
+.oCampo {
+  flex: 1;
+}
+
+.oCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 0.85rem;
+  color: var(--nCorTextoFraco);
+}
+
+.oCheckbox input {
+  width: auto;
+}
+
+button {
+  margin-top: 24px;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--nCorPrimaria);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.oProgresso {
+  margin-top: 24px;
+}
+
+.oBarraFundo {
+  width: 100%;
+  height: 10px;
+  background: #0d0f13;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--nCorBorda);
+}
+
+.oBarraPreenchimento {
+  height: 100%;
+  width: 0%;
+  background: var(--nCorPrimaria);
+  transition: width 0.3s ease;
+}
+
+.oResultado {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.oResultado audio {
+  width: 100%;
+}
+
+.oBotaoDownload {
+  display: inline-block;
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  background: #232833;
+  color: var(--nCorTexto);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.oErro {
+  margin-top: 16px;
+  color: var(--nCorErro);
+  font-size: 0.9rem;
+}
+
+.oOculto {
+  display: none;
+}

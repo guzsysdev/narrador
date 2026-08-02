@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Narrador IA — VoxCPM2</title>
+  <link rel="stylesheet" href="/estatico/estilo.css" />
+</head>
+<body>
+  <main class="oContainer">
+    <h1>Narrador IA</h1>
+    <p class="sSubtitulo">Geração de narração de vídeo com TTS local (VoxCPM2) — sem limites de duração.</p>
+
+    <form id="oFormGeracao">
+      <label for="oTexto">Texto da narração</label>
+      <textarea id="oTexto" rows="10" placeholder="Cole aqui o roteiro completo da narração..." required></textarea>
+
+      <div class="oLinha">
+        <div class="oCampo">
+          <label for="oNomeArquivo">Nome do arquivo</label>
+          <input type="text" id="oNomeArquivo" value="narracao.wav" />
+        </div>
+        <div class="oCampo">
+          <label for="oSeed">Seed (consistência de voz)</label>
+          <input type="number" id="oSeed" value="42" />
+        </div>
+      </div>
+
+      <label for="oVoz">Descrição da voz (Voice Design)</label>
+      <textarea id="oVoz" rows="2">homem, 40-50 anos, voz autoritária e confiante, tom profissional e envolvente, ideal para apresentação corporativa</textarea>
+
+      <div class="oLinha">
+        <div class="oCampo">
+          <label for="oVelocidade">Velocidade: <span id="oValorVelocidade">1.0x</span></label>
+          <input type="range" id="oVelocidade" min="0.5" max="2.0" step="0.05" value="1.0" />
+        </div>
+        <div class="oCampo">
+          <label for="oTom">Tom: <span id="oValorTom">0 semitons</span></label>
+          <input type="range" id="oTom" min="-12" max="12" step="1" value="0" />
+        </div>
+      </div>
+
+      <label class="oCheckbox">
+        <input type="checkbox" id="oForcarCpu" />
+        Forçar uso de CPU (mais lento — use apenas se não houver GPU)
+      </label>
+
+      <button type="submit" id="oBotaoGerar">Gerar narração</button>
+    </form>
+
+    <section id="oProgresso" class="oProgresso oOculto">
+      <p id="oTextoProgresso">Na fila...</p>
+      <div class="oBarraFundo">
+        <div id="oBarraPreenchimento" class="oBarraPreenchimento"></div>
+      </div>
+    </section>
+
+    <section id="oResultado" class="oResultado oOculto">
+      <p>Narração gerada com sucesso!</p>
+      <audio id="oPlayerAudio" controls></audio>
+      <a id="oLinkDownload" class="oBotaoDownload" download>Baixar WAV</a>
+    </section>
+
+    <p id="oMensagemErro" class="oErro oOculto"></p>
+  </main>
+
+  <script src="/estatico/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# Instruções internas do projeto (não deve ir para o repositório)
+CLAUDE.md
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Saídas de áudio geradas
+saidas/
+*.wav
+
+# Cache de modelos (Hugging Face / VoxCPM2)
+.cache/
+*_trechos/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

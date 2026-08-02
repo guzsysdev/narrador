@@ -1,0 +1,13 @@
+# PyTorch: instale a build correta para sua GPU/CUDA antes deste arquivo,
+# seguindo https://pytorch.org/get-started/locally/ (ex.: CUDA 12.1):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.5.0
+
+voxcpm
+librosa
+soundfile
+numpy
+
+fastapi
+uvicorn[standard]
+pydantic
