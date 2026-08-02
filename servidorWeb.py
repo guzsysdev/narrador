@@ -81,18 +81,29 @@ oJobs: dict[str, dict] = {}
 oFilaJobs: "queue.Queue[str]" = queue.Queue()
 oMotor: Optional[MotorNarracao] = None
 oEventoMotorPronto = threading.Event()
+sErroCarregamentoMotor: Optional[str] = None
 
 
 def fCarregarMotorNaInicializacao() -> None:
     """Carrega o modelo VoxCPM2 assim que o servidor sobe, em vez de esperar a
     primeira geração pedida — assim, quando o link é divulgado, já está tudo
-    pronto para uso imediato (sem o usuário esperar minutos na primeira prévia)."""
-    global oMotor
-    oLogger.info("Carregando modelo VoxCPM2 na inicialização do servidor...")
-    oMotor = MotorNarracao()
-    oMotor.fCarregarModelo()
-    oEventoMotorPronto.set()
-    oLogger.info("Modelo pronto — servidor aceitando gerações.")
+    pronto para uso imediato (sem o usuário esperar minutos na primeira prévia).
+
+    Roda em thread separada: se falhar aqui sem tratamento, a exceção morre
+    silenciosamente e quem estiver esperando /api/saude fica preso num loop
+    para sempre sem saber o motivo. Por isso capturamos e expomos o erro.
+    """
+    global oMotor, sErroCarregamentoMotor
+    try:
+        oLogger.info("Carregando modelo VoxCPM2 na inicialização do servidor...")
+        oMotor = MotorNarracao()
+        oMotor.fCarregarModelo()
+        oEventoMotorPronto.set()
+        oLogger.info("Modelo pronto — servidor aceitando gerações.")
+    except Exception as oErro:
+        oLogger.exception("Falha ao carregar o modelo na inicialização.")
+        sErroCarregamentoMotor = str(oErro)
+        oEventoMotorPronto.set()  # libera quem estiver esperando — sErro indica a falha
 
 
 @oApp.on_event("startup")
@@ -103,6 +114,8 @@ def fAoIniciarServidor() -> None:
 def foObterMotor() -> MotorNarracao:
     """Aguarda o carregamento (feito na inicialização) terminar, se ainda não tiver."""
     oEventoMotorPronto.wait()
+    if sErroCarregamentoMotor is not None:
+        raise RuntimeError(f"Modelo falhou ao carregar na inicialização: {sErroCarregamentoMotor}")
     return oMotor
 
 
@@ -174,8 +187,9 @@ oThreadWorker.start()
 @oApp.get("/api/saude")
 def fGetSaude() -> dict:
     """Usado pelo notebook do Colab para só divulgar o link depois que o
-    modelo terminar de carregar."""
-    return {"lPronto": oEventoMotorPronto.is_set()}
+    modelo terminar de carregar (ou para detectar que o carregamento falhou,
+    em vez de esperar para sempre)."""
+    return {"lPronto": oEventoMotorPronto.is_set(), "sErro": sErroCarregamentoMotor}
 
 
 @oApp.get("/api/vozes")
