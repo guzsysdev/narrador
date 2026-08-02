@@ -10,19 +10,27 @@ descrição de texto (*Voice Design*, sem áudio de referência). Feito para fug
 de duração das ferramentas de TTS web — narrações de vídeos longos (~10 min) são divididas
 em trechos e geradas com a mesma voz/seed, depois concatenadas em um único WAV.
 
-## Rodar no Google Colab (GPU gratuita)
+## Uso (via web, com GPU gratuita do Google Colab)
 
-Geração em CPU é impraticável para narrações longas (~47s de CPU por palavra —
-uma narração de 10 min pode levar quase um dia inteiro). Recomendado usar GPU:
+Geração em CPU é impraticável para narrações longas (~47s de CPU por palavra — uma
+narração de 10 min pode levar quase um dia inteiro). O caminho recomendado é: o
+notebook do Colab só liga o servidor (com GPU); **toda a interação real acontece na
+página web** que ele expõe — escolher voz, ouvir prévia, colar o roteiro, gerar e
+baixar o WAV.
 
 [![Abrir no Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/guzsysdev/narrador/blob/prod/colab_gerar_narracao.ipynb)
 
-Abra o notebook, selecione **Ambiente de execução → Alterar tipo de ambiente de
-execução → GPU (T4)**, cole seu roteiro e rode as células em ordem.
+1. Abra o notebook e selecione **Ambiente de execução → Alterar tipo de ambiente de
+   execução → GPU (T4)**
+2. **Ambiente de execução → Executar tudo** (na primeira vez, siga a célula que pede
+   pra configurar o token do ngrok em Secrets — depois disso nunca mais precisa colar)
+3. Aguarde a última célula imprimir uma URL e abra ela no navegador — é só isso, o
+   notebook pode ficar minimizado dali em diante
+4. Se a sessão do Colab cair (limite do plano grátis), volte e rode "Executar tudo"
+   de novo pra gerar um novo link
 
-O notebook também tem uma seção opcional para rodar o frontend web (abaixo) direto no
-Colab com GPU, expondo pela internet via túnel ngrok — útil se preferir a interface
-gráfica em vez de editar o roteiro por célula.
+Se você tiver GPU própria, dá pra rodar tudo localmente em vez do Colab (veja
+"Instalação" abaixo) — o notebook existe só para suprir a falta de GPU local.
 
 ## Instalação
 
