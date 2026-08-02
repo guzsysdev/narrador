@@ -54,7 +54,6 @@ class RequisicaoGeracao(BaseModel):
     nVelocidade: float = 1.0
     nTom: float = 0.0
     nSeed: int = 42
-    lForcarCpu: bool = False
 
 
 class RequisicaoPrevia(BaseModel):
@@ -63,7 +62,6 @@ class RequisicaoPrevia(BaseModel):
     sDescricaoVoz: str
     sTextoPrevia: str = sTextoPreviaMasculina
     nSeed: int = 42
-    lForcarCpu: bool = False
 
 
 # Vozes pré-definidas oferecidas na interface (nome -> descrição + frase de prévia).
@@ -77,17 +75,29 @@ oVozesPredefinidas = {
 oJobs: dict[str, dict] = {}
 oFilaJobs: "queue.Queue[str]" = queue.Queue()
 oMotor: Optional[MotorNarracao] = None
-oLockMotor = threading.Lock()
+oEventoMotorPronto = threading.Event()
 
 
-def foObterMotor(plForcarCpu: bool) -> MotorNarracao:
-    """Carrega o modelo uma única vez e reutiliza entre jobs (evita recarregar
-    o VoxCPM2 a cada geração, o que seria lento)."""
+def fCarregarMotorNaInicializacao() -> None:
+    """Carrega o modelo VoxCPM2 assim que o servidor sobe, em vez de esperar a
+    primeira geração pedida — assim, quando o link é divulgado, já está tudo
+    pronto para uso imediato (sem o usuário esperar minutos na primeira prévia)."""
     global oMotor
-    with oLockMotor:
-        if oMotor is None:
-            oMotor = MotorNarracao(plForcarCpu=plForcarCpu)
-            oMotor.fCarregarModelo()
+    oLogger.info("Carregando modelo VoxCPM2 na inicialização do servidor...")
+    oMotor = MotorNarracao()
+    oMotor.fCarregarModelo()
+    oEventoMotorPronto.set()
+    oLogger.info("Modelo pronto — servidor aceitando gerações.")
+
+
+@oApp.on_event("startup")
+def fAoIniciarServidor() -> None:
+    threading.Thread(target=fCarregarMotorNaInicializacao, daemon=True).start()
+
+
+def foObterMotor() -> MotorNarracao:
+    """Aguarda o carregamento (feito na inicialização) terminar, se ainda não tiver."""
+    oEventoMotorPronto.wait()
     return oMotor
 
 
@@ -99,7 +109,7 @@ def fProcessarFilaJobs() -> None:
         oJob = oJobs[sJobId]
         try:
             oJob["sStatus"] = "processando"
-            oMotorLocal = foObterMotor(oJob["lForcarCpu"])
+            oMotorLocal = foObterMotor()
             sCaminhoSaida = str(oDirSaidas / f"{sJobId}.wav")
 
             if oJob["sTipo"] == "previa":
@@ -144,6 +154,13 @@ oThreadWorker = threading.Thread(target=fProcessarFilaJobs, daemon=True)
 oThreadWorker.start()
 
 
+@oApp.get("/api/saude")
+def fGetSaude() -> dict:
+    """Usado pelo notebook do Colab para só divulgar o link depois que o
+    modelo terminar de carregar."""
+    return {"lPronto": oEventoMotorPronto.is_set()}
+
+
 @oApp.get("/api/vozes")
 def fGetVozes() -> dict:
     """Vozes predefinidas (descrição + frase de prévia) para a interface."""
@@ -165,7 +182,6 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
         "nVelocidade": poRequisicao.nVelocidade,
         "nTom": poRequisicao.nTom,
         "nSeed": poRequisicao.nSeed,
-        "lForcarCpu": poRequisicao.lForcarCpu,
         "iTrechoAtual": 0,
         "iTotalTrechos": 0,
     }
@@ -187,7 +203,6 @@ def fPostPrevia(poRequisicao: RequisicaoPrevia) -> dict:
         "sNomeArquivo": "previa.wav",
         "sVoz": poRequisicao.sDescricaoVoz,
         "nSeed": poRequisicao.nSeed,
-        "lForcarCpu": poRequisicao.lForcarCpu,
         "iTrechoAtual": 0,
         "iTotalTrechos": 0,
     }

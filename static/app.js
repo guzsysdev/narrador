@@ -156,7 +156,6 @@ oBotaoPrevia.addEventListener("click", async () => {
     const oResposta = await foPostPrevia({
       sDescricaoVoz: oCampoVoz.value,
       sTextoPrevia,
-      lForcarCpu: document.getElementById("oForcarCpu").checked,
     });
     fIniciarPollingPrevia(oResposta.sJobId);
   } catch (oErro) {
@@ -223,7 +222,6 @@ oFormGeracao.addEventListener("submit", async (oEvento) => {
     nVelocidade: parseFloat(oCampoVelocidade.value),
     nTom: parseFloat(oCampoTom.value),
     nSeed: parseInt(document.getElementById("oSeed").value, 10),
-    lForcarCpu: document.getElementById("oForcarCpu").checked,
   };
 
   try {
