@@ -249,17 +249,30 @@ class MotorNarracao:
         oLogger.info("Modelo carregado com sucesso.")
 
     def fGerarPrevia(
-        self, psDescricaoVoz: str, psTextoPrevia: str, psCaminhoSaida: str, piSeed: int = 42
+        self,
+        psDescricaoVoz: str,
+        psTextoPrevia: str,
+        psCaminhoSaida: str,
+        piSeed: int = 42,
+        psCaminhoVozReferencia: Optional[str] = None,
     ) -> str:
-        """Gera um clipe curto de prévia para uma descrição de voz (sem
-        chunking nem clonagem) — usado para escolher a voz antes de rodar a
-        narração completa, que é bem mais lenta."""
+        """Gera um clipe curto de prévia (sem chunking) — usado para escolher
+        a voz antes de rodar a narração completa, que é bem mais lenta.
+
+        Se psCaminhoVozReferencia for informado, clona esse áudio real em vez
+        de usar Voice Design a partir de psDescricaoVoz.
+        """
         if self.oModel is None:
             raise RuntimeError("Modelo não carregado. Chame fCarregarModelo() antes.")
 
         fFixarSeed(piSeed)
-        sTextoGeracao = f"({psDescricaoVoz}){psTextoPrevia}"
-        aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=nCfgValuePadrao)
+        if psCaminhoVozReferencia:
+            aAudio = self.oModel.generate(
+                text=psTextoPrevia, cfg_value=nCfgValuePadrao, reference_wav_path=psCaminhoVozReferencia
+            )
+        else:
+            sTextoGeracao = f"({psDescricaoVoz}){psTextoPrevia}"
+            aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=nCfgValuePadrao)
         fSalvarWav(aAudio, self.nTaxaAmostragem, psCaminhoSaida)
         return psCaminhoSaida
 

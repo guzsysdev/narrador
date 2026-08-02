@@ -1,0 +1,18 @@
+{
+  "aVozes": [
+    {
+      "sId": "masculina_vctk",
+      "sArquivo": "voz_masculina_vctk.wav",
+      "sGenero": "masculina",
+      "sDescricao": "Masculina, inglesa (Cumbria), 38 anos, leitura calma e neutra",
+      "sOrigem": "VCTK Corpus v0.92 (CSTR, Universidade de Edinburgh), locutor p227 — gravação de estúdio, licença ODC-By (uso comercial com atribuição)"
+    },
+    {
+      "sId": "feminina_vctk",
+      "sArquivo": "voz_feminina_vctk.wav",
+      "sGenero": "feminina",
+      "sDescricao": "Feminina, inglesa (sul da Inglaterra), 23 anos, leitura calma e neutra",
+      "sOrigem": "VCTK Corpus v0.92 (CSTR, Universidade de Edinburgh), locutor p225 — gravação de estúdio, licença ODC-By (uso comercial com atribuição)"
+    }
+  ]
+}

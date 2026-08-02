@@ -143,6 +143,17 @@ textarea:disabled {
   opacity: 0.7;
 }
 
+.oDetalhesUpload {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: var(--nCorTextoFraco);
+}
+
+.oDetalhesUpload summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
 .oCampo {
   flex: 1;
 }

@@ -26,22 +26,30 @@
         </div>
       </div>
 
-      <label for="oSelecaoVoz">Voz</label>
-      <select id="oSelecaoVoz">
-        <option value="masculina">Masculina (padrão)</option>
-        <option value="feminina">Feminina</option>
-        <option value="personalizada">Personalizada</option>
-      </select>
+      <label>Vozes reais (recomendado — clonagem de áudio de estúdio, sem a entonação forçada do Voice Design)</label>
+      <div id="oListaVozesReais" class="oListaOpcoesVoz"></div>
+      <p id="oMensagemErroVozReal" class="oErro oOculto"></p>
 
-      <label for="oVoz">Descrição da voz (Voice Design) — escreva em inglês, o modelo só interpreta bem inglês/chinês</label>
-      <textarea id="oVoz" rows="2" disabled placeholder="e.g. a man in his 40s, warm and confident voice..."></textarea>
+      <details class="oDetalhesUpload">
+        <summary>Ou usar Voice Design (gerar uma voz do zero por descrição — qualidade mais instável)</summary>
 
-      <div class="oLinhaPrevia">
-        <button type="button" id="oBotaoOpcoesVoz">🎲 Gerar opções de voz</button>
-        <span id="oStatusVozEscolhida" class="oStatusVoz oOculto"></span>
-      </div>
-      <div id="oListaOpcoesVoz" class="oListaOpcoesVoz"></div>
-      <p id="oMensagemErroPrevia" class="oErro oOculto"></p>
+        <label for="oSelecaoVoz">Voz</label>
+        <select id="oSelecaoVoz">
+          <option value="masculina">Masculina (padrão)</option>
+          <option value="feminina">Feminina</option>
+          <option value="personalizada">Personalizada</option>
+        </select>
+
+        <label for="oVoz">Descrição da voz (Voice Design) — escreva em inglês, o modelo só interpreta bem inglês/chinês</label>
+        <textarea id="oVoz" rows="2" disabled placeholder="e.g. a man in his 40s, warm and confident voice..."></textarea>
+
+        <div class="oLinhaPrevia">
+          <button type="button" id="oBotaoOpcoesVoz">🎲 Gerar opções de voz</button>
+          <span id="oStatusVozEscolhida" class="oStatusVoz oOculto"></span>
+        </div>
+        <div id="oListaOpcoesVoz" class="oListaOpcoesVoz"></div>
+        <p id="oMensagemErroPrevia" class="oErro oOculto"></p>
+      </details>
 
       <div class="oLinha">
         <div class="oCampo">

@@ -12,6 +12,8 @@ __pycache__/
 # Saídas de áudio geradas
 saidas/
 *.wav
+# ...exceto os clipes do catálogo de vozes reais (fazem parte do projeto)
+!vozes/*.wav
 
 # Cache de modelos (Hugging Face / VoxCPM2)
 .cache/

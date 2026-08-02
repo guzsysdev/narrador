@@ -25,10 +25,14 @@ const oStatusVozEscolhida = document.getElementById("oStatusVozEscolhida");
 const oListaOpcoesVoz = document.getElementById("oListaOpcoesVoz");
 const oMensagemErroPrevia = document.getElementById("oMensagemErroPrevia");
 
+const oListaVozesReais = document.getElementById("oListaVozesReais");
+const oMensagemErroVozReal = document.getElementById("oMensagemErroVozReal");
+
 let nIntervaloPolling = null;
 let nIntervaloPollingOpcoesVoz = null;
 let oVozesPredefinidas = {};
 const sTextoPreviaPadrao = "Olá, eu serei o seu narrador.";
+const sTextoPreviaFeminina = "Olá, eu serei a sua narradora.";
 const iQuantidadeOpcoesVoz = 4;
 
 // Estado da opção de voz escolhida pelo usuário (usada como referência de
@@ -36,6 +40,7 @@ const iQuantidadeOpcoesVoz = 4;
 let sJobIdVozEscolhida = null;
 let iIndiceVozEscolhida = null;
 let aIndicesRenderizados = [];
+let sVozRealIdEscolhida = null;
 
 function fAtualizarRotulos() {
   oValorVelocidade.textContent = `${parseFloat(oCampoVelocidade.value).toFixed(2)}x`;
@@ -80,6 +85,114 @@ async function foGetProgresso(psJobId) {
   }
   return oResposta.json();
 }
+
+async function foGetVozesReais() {
+  const oResposta = await fetch("/api/vozes-reais");
+  if (!oResposta.ok) {
+    throw new Error("Falha ao carregar catálogo de vozes reais.");
+  }
+  return oResposta.json();
+}
+
+async function foPostPreviaReal(poPayload) {
+  const oResposta = await fetch("/api/previa-real", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(poPayload),
+  });
+
+  if (!oResposta.ok) {
+    const oErro = await oResposta.json().catch(() => ({}));
+    throw new Error(oErro.detail || "Falha ao gerar prévia.");
+  }
+  return oResposta.json();
+}
+
+function fEscolherVozReal(sVozId, poCard) {
+  sVozRealIdEscolhida = sVozId;
+  // Escolher uma voz real invalida qualquer escolha feita no Voice Design
+  // (as duas vias são mutuamente exclusivas — só uma vai pro /api/gerar).
+  sJobIdVozEscolhida = null;
+  iIndiceVozEscolhida = null;
+  fOcultar(oStatusVozEscolhida);
+
+  document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
+  poCard.classList.add("oOpcaoVozEscolhida");
+}
+
+function fAdicionarCardVozReal(sVozId, oVoz) {
+  const oCard = document.createElement("div");
+  oCard.className = "oOpcaoVoz";
+
+  const oRotulo = document.createElement("span");
+  oRotulo.textContent = `${oVoz.sDescricao} — ${oVoz.sOrigem}`;
+
+  const oAudio = document.createElement("audio");
+  oAudio.controls = true;
+  oAudio.className = "oOculto";
+
+  const oBotaoPrevia = document.createElement("button");
+  oBotaoPrevia.type = "button";
+  oBotaoPrevia.textContent = "▶ Prévia";
+  oBotaoPrevia.addEventListener("click", async () => {
+    oBotaoPrevia.disabled = true;
+    oBotaoPrevia.textContent = "Gerando...";
+    fOcultar(oMensagemErroVozReal);
+    try {
+      const sTexto = oVoz.sGenero === "feminina" ? sTextoPreviaFeminina : sTextoPreviaPadrao;
+      const oResposta = await foPostPreviaReal({ sVozRealId: sVozId, sTextoPrevia: sTexto });
+      const nIntervalo = setInterval(async () => {
+        const oStatus = await foGetProgresso(oResposta.sJobId);
+        if (oStatus.sStatus === "concluido") {
+          clearInterval(nIntervalo);
+          oAudio.src = `/api/download/${oResposta.sJobId}`;
+          fMostrar(oAudio);
+          oAudio.play();
+          oBotaoPrevia.disabled = false;
+          oBotaoPrevia.textContent = "▶ Prévia";
+        } else if (oStatus.sStatus === "erro") {
+          clearInterval(nIntervalo);
+          oMensagemErroVozReal.textContent = oStatus.sErro || "Erro ao gerar prévia.";
+          fMostrar(oMensagemErroVozReal);
+          oBotaoPrevia.disabled = false;
+          oBotaoPrevia.textContent = "▶ Prévia";
+        }
+      }, 1500);
+    } catch (oErro) {
+      oMensagemErroVozReal.textContent = oErro.message;
+      fMostrar(oMensagemErroVozReal);
+      oBotaoPrevia.disabled = false;
+      oBotaoPrevia.textContent = "▶ Prévia";
+    }
+  });
+
+  const oBotaoUsar = document.createElement("button");
+  oBotaoUsar.type = "button";
+  oBotaoUsar.textContent = "Usar esta voz";
+  oBotaoUsar.addEventListener("click", () => fEscolherVozReal(sVozId, oCard));
+
+  oCard.append(oRotulo, oBotaoPrevia, oBotaoUsar, oAudio);
+  oListaVozesReais.appendChild(oCard);
+}
+
+async function foCarregarVozesReais() {
+  try {
+    const oCatalogo = await foGetVozesReais();
+    const aIds = Object.keys(oCatalogo);
+    aIds.forEach((sId) => fAdicionarCardVozReal(sId, oCatalogo[sId]));
+
+    // Pré-seleciona a primeira voz do catálogo, pra sempre ter algo pronto
+    // pra gerar sem exigir uma escolha manual antes.
+    if (aIds.length > 0) {
+      fEscolherVozReal(aIds[0], oListaVozesReais.children[0]);
+    }
+  } catch (oErro) {
+    oMensagemErroVozReal.textContent = oErro.message;
+    fMostrar(oMensagemErroVozReal);
+  }
+}
+
+foCarregarVozesReais();
 
 async function foCarregarVozesPredefinidas() {
   try {
@@ -141,6 +254,7 @@ async function foGetOpcoesVoz(psJobId) {
 function fEscolherVoz(psJobId, piIndice, poCard) {
   sJobIdVozEscolhida = psJobId;
   iIndiceVozEscolhida = piIndice;
+  sVozRealIdEscolhida = null; // Voice Design e voz real são mutuamente exclusivos
 
   document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
   poCard.classList.add("oOpcaoVozEscolhida");
@@ -284,6 +398,7 @@ oFormGeracao.addEventListener("submit", async (oEvento) => {
     nSeed: parseInt(document.getElementById("oSeed").value, 10),
     sJobIdVozEscolhida,
     iIndiceVozEscolhida,
+    sVozRealId: sVozRealIdEscolhida,
   };
 
   try {

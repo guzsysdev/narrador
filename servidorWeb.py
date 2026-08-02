@@ -10,6 +10,7 @@ Depois abrir http://localhost:8000 no navegador.
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import random
@@ -42,8 +43,17 @@ oApp = FastAPI(title="Narrador IA")
 oDirBase = Path(__file__).parent
 oDirSaidas = oDirBase / "saidas"
 oDirSaidas.mkdir(exist_ok=True)
+oDirVozes = oDirBase / "vozes"
 
 oApp.mount("/estatico", StaticFiles(directory=str(oDirBase / "static")), name="estatico")
+
+# Catálogo de vozes REAIS prontas (clipes de estúdio, VCTK Corpus) — clonagem
+# via reference_wav_path em vez de Voice Design, evitando a entonação
+# "gritada" que o Voice Design tende a produzir mesmo com descrição calma.
+with open(oDirVozes / "catalogo.json", encoding="utf-8") as oArquivoCatalogo:
+    oCatalogoVozesReais = {oVoz["sId"]: oVoz for oVoz in json.load(oArquivoCatalogo)["aVozes"]}
+for oVoz in oCatalogoVozesReais.values():
+    oVoz["sCaminho"] = str(oDirVozes / oVoz["sArquivo"])
 
 
 class RequisicaoGeracao(BaseModel):
@@ -59,6 +69,9 @@ class RequisicaoGeracao(BaseModel):
     # referência de clonagem em vez de gerar a voz do zero por Voice Design.
     sJobIdVozEscolhida: Optional[str] = None
     iIndiceVozEscolhida: Optional[int] = None
+    # Ou: usa uma voz real do catálogo (vozes/catalogo.json) como referência
+    # de clonagem — tem prioridade sobre sJobIdVozEscolhida/iIndiceVozEscolhida.
+    sVozRealId: Optional[str] = None
 
 
 class RequisicaoOpcoesVoz(BaseModel):
@@ -67,6 +80,13 @@ class RequisicaoOpcoesVoz(BaseModel):
     sDescricaoVoz: str
     sTextoPrevia: str = sTextoPreviaMasculina
     iQuantidade: int = 4
+
+
+class RequisicaoPreviaReal(BaseModel):
+    """Corpo da requisição POST /api/previa-real."""
+
+    sVozRealId: str
+    sTextoPrevia: str = sTextoPreviaMasculina
 
 
 # Vozes pré-definidas oferecidas na interface (nome -> descrição + frase de prévia).
@@ -149,6 +169,19 @@ def fProcessarFilaJobs() -> None:
                         {"iIndice": iIndice, "nSeed": nSeedAleatoria, "sCaminho": sCaminhoOpcao}
                     )
                     oJob["iTrechoAtual"] = iIndice + 1
+
+            elif oJob["sTipo"] == "previa_real":
+                sCaminhoSaida = str(oDirSaidas / f"{sJobId}.wav")
+                oMotorLocal.fGerarPrevia(
+                    psDescricaoVoz="",
+                    psTextoPrevia=oJob["sTexto"],
+                    psCaminhoSaida=sCaminhoSaida,
+                    psCaminhoVozReferencia=oJob["sCaminhoVozReferencia"],
+                )
+                oJob["sCaminhoSaida"] = sCaminhoSaida
+                oJob["iTrechoAtual"] = 1
+                oJob["iTotalTrechos"] = 1
+
             else:
 
                 def fCallback(piAtual: int, piTotal: int) -> None:
@@ -198,13 +231,49 @@ def fGetVozes() -> dict:
     return oVozesPredefinidas
 
 
+@oApp.get("/api/vozes-reais")
+def fGetVozesReais() -> dict:
+    """Catálogo de vozes reais (clonagem via reference_wav_path, sem Voice
+    Design) — evita a entonação forçada que o Voice Design tende a produzir."""
+    return {
+        sId: {"sGenero": oVoz["sGenero"], "sDescricao": oVoz["sDescricao"], "sOrigem": oVoz["sOrigem"]}
+        for sId, oVoz in oCatalogoVozesReais.items()
+    }
+
+
+@oApp.post("/api/previa-real")
+def fPostPreviaReal(poRequisicao: RequisicaoPreviaReal) -> dict:
+    oVoz = oCatalogoVozesReais.get(poRequisicao.sVozRealId)
+    if oVoz is None:
+        raise HTTPException(status_code=404, detail="Voz não encontrada no catálogo.")
+
+    sJobId = str(uuid.uuid4())
+    oJobs[sJobId] = {
+        "sTipo": "previa_real",
+        "sStatus": "na_fila",
+        "sTexto": poRequisicao.sTextoPrevia,
+        "sNomeArquivo": "previa.wav",
+        "sCaminhoVozReferencia": oVoz["sCaminho"],
+        "iTrechoAtual": 0,
+        "iTotalTrechos": 1,
+    }
+    oFilaJobs.put(sJobId)
+    oLogger.info("Job %s (prévia de voz real: %s) adicionado à fila.", sJobId, poRequisicao.sVozRealId)
+    return {"sJobId": sJobId}
+
+
 @oApp.post("/api/gerar")
 def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
     if not poRequisicao.sTexto.strip():
         raise HTTPException(status_code=400, detail="Texto da narração vazio.")
 
     sCaminhoVozReferencia = None
-    if poRequisicao.sJobIdVozEscolhida is not None and poRequisicao.iIndiceVozEscolhida is not None:
+    if poRequisicao.sVozRealId is not None:
+        oVozReal = oCatalogoVozesReais.get(poRequisicao.sVozRealId)
+        if oVozReal is None:
+            raise HTTPException(status_code=400, detail="Voz real não encontrada no catálogo.")
+        sCaminhoVozReferencia = oVozReal["sCaminho"]
+    elif poRequisicao.sJobIdVozEscolhida is not None and poRequisicao.iIndiceVozEscolhida is not None:
         oJobVoz = oJobs.get(poRequisicao.sJobIdVozEscolhida)
         if oJobVoz is None:
             raise HTTPException(status_code=400, detail="Job de opções de voz não encontrado.")
