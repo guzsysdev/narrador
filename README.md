@@ -20,6 +20,10 @@ uma narração de 10 min pode levar quase um dia inteiro). Recomendado usar GPU:
 Abra o notebook, selecione **Ambiente de execução → Alterar tipo de ambiente de
 execução → GPU (T4)**, cole seu roteiro e rode as células em ordem.
 
+O notebook também tem uma seção opcional para rodar o frontend web (abaixo) direto no
+Colab com GPU, expondo pela internet via túnel ngrok — útil se preferir a interface
+gráfica em vez de editar o roteiro por célula.
+
 ## Instalação
 
 Requer Python ≥ 3.10 e < 3.13.
