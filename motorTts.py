@@ -21,14 +21,20 @@ oLogger = logging.getLogger(sLoggerNome)
 
 # Descrições de voz padrão (Voice Design, sem áudio de referência), usadas
 # quando nenhuma outra é informada e nas prévias de escolha de voz.
+#
+# A instrução de controle (entre parênteses, antes do texto) só é interpretada
+# de forma confiável pelo VoxCPM2 em inglês — descrevê-la em português produz
+# vozes que não batem com o gênero/tom pedido. O TEXTO NARRADO em si (fora dos
+# parênteses) continua normalmente em português; só a instrução de voz precisa
+# ser em inglês.
 sVozPadrao = (
-    "homem, 40-50 anos, voz autoritária e confiante, tom profissional e "
-    "envolvente, ideal para apresentação corporativa"
+    "a man in his 40s, authoritative and confident voice, professional and "
+    "engaging tone, ideal for corporate presentations"
 )
 sVozPadraoMasculina = sVozPadrao
 sVozPadraoFeminina = (
-    "mulher, 30-40 anos, voz confiante e envolvente, tom profissional e "
-    "caloroso, ideal para apresentação corporativa"
+    "a woman in her 30s, confident and engaging voice, warm and professional "
+    "tone, ideal for corporate presentations"
 )
 
 # Frases curtas usadas para gerar uma prévia de voz antes de rodar a narração completa.
