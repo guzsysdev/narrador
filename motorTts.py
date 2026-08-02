@@ -20,9 +20,10 @@ sLoggerNome = "narrador.motor"
 oLogger = logging.getLogger(sLoggerNome)
 
 # Escala de aderência ao texto/condicionamento (0.1-10.0, doc. recomenda 1.0-3.0,
-# e 1.5-1.6 para geração mais longa/estável). O padrão 2.0 do modelo tende a
-# soar "gritado"/forçado; reduzido para uma entonação mais natural e calma.
-nCfgValuePadrao = 1.5
+# e 1.5-1.6 para geração mais longa/estável). Reduzido ainda mais (abaixo da
+# faixa recomendada) numa tentativa de amenizar a entonação "gritada" que o
+# modelo tende a produzir mesmo com descrição de voz calma.
+nCfgValuePadrao = 1.2
 
 # Descrições de voz padrão (Voice Design, sem áudio de referência), usadas
 # quando nenhuma outra é informada e nas prévias de escolha de voz.
@@ -32,14 +33,22 @@ nCfgValuePadrao = 1.5
 # vozes que não batem com o gênero/tom pedido. O TEXTO NARRADO em si (fora dos
 # parênteses) continua normalmente em português; só a instrução de voz precisa
 # ser em inglês.
+#
+# Explicitamente pede tom baixo/não-gritado: o modelo tende a exagerar a
+# entonação (soar "gritado"/forçado) mesmo com descrições neutras como
+# "confident" — reforçar o oposto ("soft-spoken", "NOT shouting") no texto é
+# o único controle disponível além do cfg_value, já que não há parâmetro
+# separado de energia/volume no generate().
 sVozPadrao = (
-    "a man in his 40s, calm and confident voice, warm and natural conversational "
-    "tone, ideal for corporate presentations"
+    "a man in his 40s, soft-spoken and calm voice, quiet relaxed conversational "
+    "tone, speaking gently at a measured pace, NOT shouting or loud, ideal for "
+    "corporate presentations"
 )
 sVozPadraoMasculina = sVozPadrao
 sVozPadraoFeminina = (
-    "a woman in her 30s, calm and confident voice, warm and natural conversational "
-    "tone, ideal for corporate presentations"
+    "a woman in her 30s, soft-spoken and calm voice, quiet relaxed conversational "
+    "tone, speaking gently at a measured pace, NOT shouting or loud, ideal for "
+    "corporate presentations"
 )
 
 # Frases curtas usadas para gerar uma prévia de voz antes de rodar a narração completa.
