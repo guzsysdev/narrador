@@ -19,6 +19,11 @@ from typing import Callable, Optional
 sLoggerNome = "narrador.motor"
 oLogger = logging.getLogger(sLoggerNome)
 
+# Escala de aderência ao texto/condicionamento (0.1-10.0, doc. recomenda 1.0-3.0,
+# e 1.5-1.6 para geração mais longa/estável). O padrão 2.0 do modelo tende a
+# soar "gritado"/forçado; reduzido para uma entonação mais natural e calma.
+nCfgValuePadrao = 1.5
+
 # Descrições de voz padrão (Voice Design, sem áudio de referência), usadas
 # quando nenhuma outra é informada e nas prévias de escolha de voz.
 #
@@ -28,12 +33,12 @@ oLogger = logging.getLogger(sLoggerNome)
 # parênteses) continua normalmente em português; só a instrução de voz precisa
 # ser em inglês.
 sVozPadrao = (
-    "a man in his 40s, authoritative and confident voice, professional and "
-    "engaging tone, ideal for corporate presentations"
+    "a man in his 40s, calm and confident voice, warm and natural conversational "
+    "tone, ideal for corporate presentations"
 )
 sVozPadraoMasculina = sVozPadrao
 sVozPadraoFeminina = (
-    "a woman in her 30s, confident and engaging voice, warm and professional "
+    "a woman in her 30s, calm and confident voice, warm and natural conversational "
     "tone, ideal for corporate presentations"
 )
 
@@ -170,8 +175,20 @@ def faAplicarVelocidadeTom(paAudio, pnTaxaAmostragem: int, pnVelocidade: float, 
 
 
 def fSalvarWav(paAudio, pnTaxaAmostragem: int, psCaminho: str) -> None:
-    """Salva um array de áudio em WAV 16-bit PCM."""
+    """Salva um array de áudio em WAV 16-bit PCM.
+
+    Aplica uma normalização de segurança contra clipping: se o pico do áudio
+    passar de ~0.98 (a saída do modelo não vem garantidamente dentro de
+    [-1, 1]), o PCM_16 estoura e distorce — o que soa como um "grito"
+    forçado/distorcido em vez de volume alto de verdade. Reduzimos o ganho
+    proporcionalmente só quando necessário, sem alterar áudio que já está OK.
+    """
+    import numpy as np
     import soundfile as sf
+
+    nPico = float(np.max(np.abs(paAudio))) if len(paAudio) else 0.0
+    if nPico > 0.98:
+        paAudio = paAudio * (0.98 / nPico)
 
     sf.write(psCaminho, paAudio, pnTaxaAmostragem, subtype="PCM_16")
 
@@ -242,7 +259,7 @@ class MotorNarracao:
 
         fFixarSeed(piSeed)
         sTextoGeracao = f"({psDescricaoVoz}){psTextoPrevia}"
-        aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=2.0)
+        aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=nCfgValuePadrao)
         fSalvarWav(aAudio, self.nTaxaAmostragem, psCaminhoSaida)
         return psCaminhoSaida
 
@@ -271,10 +288,10 @@ class MotorNarracao:
         fFixarSeed(poConfigVoz.nSeed)
         if psCaminhoVozReferencia is None:
             sTextoGeracao = f"({poConfigVoz.sDescricaoVoz}){psTexto}"
-            aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=2.0)
+            aAudio = self.oModel.generate(text=sTextoGeracao, cfg_value=nCfgValuePadrao)
         else:
             aAudio = self.oModel.generate(
-                text=psTexto, cfg_value=2.0, reference_wav_path=psCaminhoVozReferencia
+                text=psTexto, cfg_value=nCfgValuePadrao, reference_wav_path=psCaminhoVozReferencia
             )
 
         aAudioProcessado = faAplicarVelocidadeTom(
