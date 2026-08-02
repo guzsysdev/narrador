@@ -284,10 +284,15 @@ class MotorNarracao:
         psCaminhoSaida: str,
         pfCallbackProgresso: Optional[Callable[[int, int], None]] = None,
         piTamanhoMaximoTrecho: int = 350,
+        psCaminhoVozReferencia: Optional[str] = None,
     ) -> str:
-        """Gera a narração completa: divide o texto em trechos, gera o primeiro
-        via Voice Design e clona essa mesma voz (reference_wav_path) nos
-        demais, aplica velocidade/tom e concatena tudo no WAV final.
+        """Gera a narração completa: divide o texto em trechos, aplica
+        velocidade/tom e concatena tudo no WAV final.
+
+        Se psCaminhoVozReferencia for informado (ex.: uma opção de voz já
+        escolhida pelo usuário na prévia), todos os trechos — incluindo o
+        primeiro — clonam essa voz. Caso contrário, o primeiro trecho cria a
+        voz via Voice Design e os demais clonam essa mesma voz.
         """
         aTrechos = faDividirTexto(psTexto, piTamanhoMaximoTrecho)
         iTotalTrechos = len(aTrechos)
@@ -300,10 +305,10 @@ class MotorNarracao:
         oDirTemp = oCaminhoSaida.parent / f".{oCaminhoSaida.stem}_trechos"
         oDirTemp.mkdir(parents=True, exist_ok=True)
         aCaminhosTrechos: list[Path] = []
-        oCaminhoVozReferencia = oDirTemp / "voz_referencia.wav"
+        oCaminhoVozReferenciaInterna = oDirTemp / "voz_referencia.wav"
 
         try:
-            sCaminhoVozReferencia = None
+            sCaminhoVozReferencia = psCaminhoVozReferencia
             for iIndice, sTrecho in enumerate(aTrechos, start=1):
                 oCaminhoTrecho = oDirTemp / f"trecho_{iIndice:04d}.wav"
                 aAudioBruto = self._fGerarESalvarTrecho(
@@ -312,8 +317,8 @@ class MotorNarracao:
                 aCaminhosTrechos.append(oCaminhoTrecho)
 
                 if sCaminhoVozReferencia is None:
-                    fSalvarWav(aAudioBruto, self.nTaxaAmostragem, str(oCaminhoVozReferencia))
-                    sCaminhoVozReferencia = str(oCaminhoVozReferencia)
+                    fSalvarWav(aAudioBruto, self.nTaxaAmostragem, str(oCaminhoVozReferenciaInterna))
+                    sCaminhoVozReferencia = str(oCaminhoVozReferenciaInterna)
 
                 if pfCallbackProgresso:
                     pfCallbackProgresso(iIndice, iTotalTrechos)
@@ -323,7 +328,7 @@ class MotorNarracao:
         finally:
             for oCaminho in aCaminhosTrechos:
                 oCaminho.unlink(missing_ok=True)
-            oCaminhoVozReferencia.unlink(missing_ok=True)
+            oCaminhoVozReferenciaInterna.unlink(missing_ok=True)
             oDirTemp.rmdir()
 
         oLogger.info("Narração completa salva em: %s", oCaminhoSaida)

@@ -20,14 +20,22 @@ const oMensagemErro = document.getElementById("oMensagemErro");
 
 const oSelecaoVoz = document.getElementById("oSelecaoVoz");
 const oCampoVoz = document.getElementById("oVoz");
-const oBotaoPrevia = document.getElementById("oBotaoPrevia");
-const oPlayerPrevia = document.getElementById("oPlayerPrevia");
+const oBotaoOpcoesVoz = document.getElementById("oBotaoOpcoesVoz");
+const oStatusVozEscolhida = document.getElementById("oStatusVozEscolhida");
+const oListaOpcoesVoz = document.getElementById("oListaOpcoesVoz");
 const oMensagemErroPrevia = document.getElementById("oMensagemErroPrevia");
 
 let nIntervaloPolling = null;
-let nIntervaloPollingPrevia = null;
+let nIntervaloPollingOpcoesVoz = null;
 let oVozesPredefinidas = {};
 const sTextoPreviaPadrao = "Olá, eu serei o seu narrador.";
+const iQuantidadeOpcoesVoz = 4;
+
+// Estado da opção de voz escolhida pelo usuário (usada como referência de
+// clonagem na geração final, em vez de recriar a voz do zero).
+let sJobIdVozEscolhida = null;
+let iIndiceVozEscolhida = null;
+let aIndicesRenderizados = [];
 
 function fAtualizarRotulos() {
   oValorVelocidade.textContent = `${parseFloat(oCampoVelocidade.value).toFixed(2)}x`;
@@ -83,6 +91,15 @@ async function foCarregarVozesPredefinidas() {
   }
 }
 
+function fLimparEscolhaVoz() {
+  sJobIdVozEscolhida = null;
+  iIndiceVozEscolhida = null;
+  aIndicesRenderizados = [];
+  oListaOpcoesVoz.innerHTML = "";
+  fOcultar(oStatusVozEscolhida);
+  fOcultar(oMensagemErroPrevia);
+}
+
 function fAtualizarDescricaoVoz() {
   const sSelecao = oSelecaoVoz.value;
   if (sSelecao === "personalizada") {
@@ -94,14 +111,13 @@ function fAtualizarDescricaoVoz() {
     oCampoVoz.disabled = true;
     oCampoVoz.value = oVozesPredefinidas[sSelecao]?.sDescricao || "";
   }
-  fOcultar(oPlayerPrevia);
-  fOcultar(oMensagemErroPrevia);
+  fLimparEscolhaVoz();
 }
 
 oSelecaoVoz.addEventListener("change", fAtualizarDescricaoVoz);
 
-async function foPostPrevia(poPayload) {
-  const oResposta = await fetch("/api/previa", {
+async function foPostOpcoesVoz(poPayload) {
+  const oResposta = await fetch("/api/opcoes-voz", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(poPayload),
@@ -109,60 +125,104 @@ async function foPostPrevia(poPayload) {
 
   if (!oResposta.ok) {
     const oErro = await oResposta.json().catch(() => ({}));
-    throw new Error(oErro.detail || "Falha ao gerar prévia.");
+    throw new Error(oErro.detail || "Falha ao gerar opções de voz.");
   }
   return oResposta.json();
 }
 
-function fIniciarPollingPrevia(psJobId) {
-  nIntervaloPollingPrevia = setInterval(async () => {
-    try {
-      const oStatus = await foGetProgresso(psJobId);
+async function foGetOpcoesVoz(psJobId) {
+  const oResposta = await fetch(`/api/opcoes-voz/${psJobId}`);
+  if (!oResposta.ok) {
+    throw new Error("Falha ao consultar opções de voz.");
+  }
+  return oResposta.json();
+}
 
-      if (oStatus.sStatus === "concluido") {
-        clearInterval(nIntervaloPollingPrevia);
-        oPlayerPrevia.src = `/api/download/${psJobId}`;
-        fMostrar(oPlayerPrevia);
-        oPlayerPrevia.play();
-        oBotaoPrevia.disabled = false;
-        oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
+function fEscolherVoz(psJobId, piIndice, poCard) {
+  sJobIdVozEscolhida = psJobId;
+  iIndiceVozEscolhida = piIndice;
+
+  document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
+  poCard.classList.add("oOpcaoVozEscolhida");
+
+  oStatusVozEscolhida.textContent = `✓ Voz selecionada: opção ${piIndice + 1}`;
+  fMostrar(oStatusVozEscolhida);
+}
+
+function fAdicionarCardOpcaoVoz(psJobId, piIndice) {
+  const oCard = document.createElement("div");
+  oCard.className = "oOpcaoVoz";
+
+  const oRotulo = document.createElement("span");
+  oRotulo.textContent = `Opção ${piIndice + 1}`;
+
+  const oAudio = document.createElement("audio");
+  oAudio.controls = true;
+  oAudio.src = `/api/opcoes-voz/${psJobId}/${piIndice}`;
+
+  const oBotaoUsar = document.createElement("button");
+  oBotaoUsar.type = "button";
+  oBotaoUsar.textContent = "Usar esta voz";
+  oBotaoUsar.addEventListener("click", () => fEscolherVoz(psJobId, piIndice, oCard));
+
+  oCard.append(oRotulo, oAudio, oBotaoUsar);
+  oListaOpcoesVoz.appendChild(oCard);
+}
+
+function fPararGeracaoOpcoesVoz() {
+  clearInterval(nIntervaloPollingOpcoesVoz);
+  oBotaoOpcoesVoz.disabled = false;
+  oBotaoOpcoesVoz.textContent = "🎲 Gerar opções de voz";
+}
+
+function fIniciarPollingOpcoesVoz(psJobId) {
+  nIntervaloPollingOpcoesVoz = setInterval(async () => {
+    try {
+      const oStatus = await foGetOpcoesVoz(psJobId);
+
+      for (const iIndice of oStatus.aIndicesProntos) {
+        if (!aIndicesRenderizados.includes(iIndice)) {
+          aIndicesRenderizados.push(iIndice);
+          fAdicionarCardOpcaoVoz(psJobId, iIndice);
+        }
+      }
+
+      if (oStatus.sStatus === "processando" || oStatus.sStatus === "na_fila") {
+        oBotaoOpcoesVoz.textContent = `Gerando opções... ${oStatus.iTrechoAtual}/${oStatus.iTotalTrechos}`;
+      } else if (oStatus.sStatus === "concluido") {
+        fPararGeracaoOpcoesVoz();
       } else if (oStatus.sStatus === "erro") {
-        clearInterval(nIntervaloPollingPrevia);
-        oMensagemErroPrevia.textContent = oStatus.sErro || "Erro ao gerar prévia.";
+        fPararGeracaoOpcoesVoz();
+        oMensagemErroPrevia.textContent = oStatus.sErro || "Erro ao gerar opções de voz.";
         fMostrar(oMensagemErroPrevia);
-        oBotaoPrevia.disabled = false;
-        oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
       }
     } catch (oErro) {
-      clearInterval(nIntervaloPollingPrevia);
+      fPararGeracaoOpcoesVoz();
       oMensagemErroPrevia.textContent = oErro.message;
       fMostrar(oMensagemErroPrevia);
-      oBotaoPrevia.disabled = false;
-      oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
     }
   }, 1500);
 }
 
-oBotaoPrevia.addEventListener("click", async () => {
-  fOcultar(oMensagemErroPrevia);
-  fOcultar(oPlayerPrevia);
-  oBotaoPrevia.disabled = true;
-  oBotaoPrevia.textContent = "Gerando prévia...";
+oBotaoOpcoesVoz.addEventListener("click", async () => {
+  fLimparEscolhaVoz();
+  oBotaoOpcoesVoz.disabled = true;
+  oBotaoOpcoesVoz.textContent = "Gerando opções... 0/" + iQuantidadeOpcoesVoz;
 
   const sSelecao = oSelecaoVoz.value;
   const sTextoPrevia = oVozesPredefinidas[sSelecao]?.sTextoPrevia || sTextoPreviaPadrao;
 
   try {
-    const oResposta = await foPostPrevia({
+    const oResposta = await foPostOpcoesVoz({
       sDescricaoVoz: oCampoVoz.value,
       sTextoPrevia,
+      iQuantidade: iQuantidadeOpcoesVoz,
     });
-    fIniciarPollingPrevia(oResposta.sJobId);
+    fIniciarPollingOpcoesVoz(oResposta.sJobId);
   } catch (oErro) {
+    fPararGeracaoOpcoesVoz();
     oMensagemErroPrevia.textContent = oErro.message;
     fMostrar(oMensagemErroPrevia);
-    oBotaoPrevia.disabled = false;
-    oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
   }
 });
 
@@ -222,6 +282,8 @@ oFormGeracao.addEventListener("submit", async (oEvento) => {
     nVelocidade: parseFloat(oCampoVelocidade.value),
     nTom: parseFloat(oCampoTom.value),
     nSeed: parseInt(document.getElementById("oSeed").value, 10),
+    sJobIdVozEscolhida,
+    iIndiceVozEscolhida,
   };
 
   try {

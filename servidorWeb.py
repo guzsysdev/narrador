@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import random
 import threading
 import uuid
 from pathlib import Path
@@ -54,14 +55,18 @@ class RequisicaoGeracao(BaseModel):
     nVelocidade: float = 1.0
     nTom: float = 0.0
     nSeed: int = 42
+    # Se preenchidos, usa a opção de voz escolhida em /api/opcoes-voz como
+    # referência de clonagem em vez de gerar a voz do zero por Voice Design.
+    sJobIdVozEscolhida: Optional[str] = None
+    iIndiceVozEscolhida: Optional[int] = None
 
 
-class RequisicaoPrevia(BaseModel):
-    """Corpo da requisição POST /api/previa."""
+class RequisicaoOpcoesVoz(BaseModel):
+    """Corpo da requisição POST /api/opcoes-voz."""
 
     sDescricaoVoz: str
     sTextoPrevia: str = sTextoPreviaMasculina
-    nSeed: int = 42
+    iQuantidade: int = 4
 
 
 # Vozes pré-definidas oferecidas na interface (nome -> descrição + frase de prévia).
@@ -102,7 +107,7 @@ def foObterMotor() -> MotorNarracao:
 
 
 def fProcessarFilaJobs() -> None:
-    """Worker único: processa um job por vez (narração completa ou prévia de
+    """Worker único: processa um job por vez (narração completa ou opções de
     voz) para não estourar VRAM com gerações concorrentes."""
     while True:
         sJobId = oFilaJobs.get()
@@ -110,17 +115,27 @@ def fProcessarFilaJobs() -> None:
         try:
             oJob["sStatus"] = "processando"
             oMotorLocal = foObterMotor()
-            sCaminhoSaida = str(oDirSaidas / f"{sJobId}.wav")
 
-            if oJob["sTipo"] == "previa":
-                oMotorLocal.fGerarPrevia(
-                    psDescricaoVoz=oJob["sVoz"],
-                    psTextoPrevia=oJob["sTexto"],
-                    psCaminhoSaida=sCaminhoSaida,
-                    piSeed=oJob["nSeed"],
-                )
-                oJob["iTrechoAtual"] = 1
-                oJob["iTotalTrechos"] = 1
+            if oJob["sTipo"] == "opcoes_voz":
+                iQuantidade = oJob["iQuantidade"]
+                for iIndice in range(iQuantidade):
+                    # Seed aleatória (não fixa) em cada opção: o Voice Design é
+                    # estocástico, então descrições iguais com seeds diferentes
+                    # produzem vozes distintas dentro do que a descrição pede —
+                    # é assim que oferecemos várias vozes reais para escolher,
+                    # em vez de uma única amostra fixa que pode não soar bem.
+                    nSeedAleatoria = random.randint(1, 2_000_000_000)
+                    sCaminhoOpcao = str(oDirSaidas / f"{sJobId}_opcao{iIndice}.wav")
+                    oMotorLocal.fGerarPrevia(
+                        psDescricaoVoz=oJob["sVoz"],
+                        psTextoPrevia=oJob["sTexto"],
+                        psCaminhoSaida=sCaminhoOpcao,
+                        piSeed=nSeedAleatoria,
+                    )
+                    oJob["aOpcoes"].append(
+                        {"iIndice": iIndice, "nSeed": nSeedAleatoria, "sCaminho": sCaminhoOpcao}
+                    )
+                    oJob["iTrechoAtual"] = iIndice + 1
             else:
 
                 def fCallback(piAtual: int, piTotal: int) -> None:
@@ -133,14 +148,16 @@ def fProcessarFilaJobs() -> None:
                     nTom=oJob["nTom"],
                     nSeed=oJob["nSeed"],
                 )
+                sCaminhoSaida = str(oDirSaidas / f"{sJobId}.wav")
                 oMotorLocal.fGerarNarracaoCompleta(
                     psTexto=oJob["sTexto"],
                     poConfigVoz=poConfigVoz,
                     psCaminhoSaida=sCaminhoSaida,
                     pfCallbackProgresso=fCallback,
+                    psCaminhoVozReferencia=oJob.get("sCaminhoVozReferencia"),
                 )
+                oJob["sCaminhoSaida"] = sCaminhoSaida
 
-            oJob["sCaminhoSaida"] = sCaminhoSaida
             oJob["sStatus"] = "concluido"
         except Exception as oErro:
             oLogger.exception("Falha ao processar job %s", sJobId)
@@ -172,6 +189,16 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
     if not poRequisicao.sTexto.strip():
         raise HTTPException(status_code=400, detail="Texto da narração vazio.")
 
+    sCaminhoVozReferencia = None
+    if poRequisicao.sJobIdVozEscolhida is not None and poRequisicao.iIndiceVozEscolhida is not None:
+        oJobVoz = oJobs.get(poRequisicao.sJobIdVozEscolhida)
+        if oJobVoz is None:
+            raise HTTPException(status_code=400, detail="Job de opções de voz não encontrado.")
+        aOpcoes = oJobVoz.get("aOpcoes", [])
+        if not (0 <= poRequisicao.iIndiceVozEscolhida < len(aOpcoes)):
+            raise HTTPException(status_code=400, detail="Índice de opção de voz inválido.")
+        sCaminhoVozReferencia = aOpcoes[poRequisicao.iIndiceVozEscolhida]["sCaminho"]
+
     sJobId = str(uuid.uuid4())
     oJobs[sJobId] = {
         "sTipo": "narracao",
@@ -182,6 +209,7 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
         "nVelocidade": poRequisicao.nVelocidade,
         "nTom": poRequisicao.nTom,
         "nSeed": poRequisicao.nSeed,
+        "sCaminhoVozReferencia": sCaminhoVozReferencia,
         "iTrechoAtual": 0,
         "iTotalTrechos": 0,
     }
@@ -190,25 +218,55 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
     return {"sJobId": sJobId}
 
 
-@oApp.post("/api/previa")
-def fPostPrevia(poRequisicao: RequisicaoPrevia) -> dict:
+@oApp.post("/api/opcoes-voz")
+def fPostOpcoesVoz(poRequisicao: RequisicaoOpcoesVoz) -> dict:
     if not poRequisicao.sDescricaoVoz.strip():
         raise HTTPException(status_code=400, detail="Descrição da voz vazia.")
+    if not (1 <= poRequisicao.iQuantidade <= 8):
+        raise HTTPException(status_code=400, detail="Quantidade de opções deve ser entre 1 e 8.")
 
     sJobId = str(uuid.uuid4())
     oJobs[sJobId] = {
-        "sTipo": "previa",
+        "sTipo": "opcoes_voz",
         "sStatus": "na_fila",
         "sTexto": poRequisicao.sTextoPrevia,
-        "sNomeArquivo": "previa.wav",
         "sVoz": poRequisicao.sDescricaoVoz,
-        "nSeed": poRequisicao.nSeed,
+        "iQuantidade": poRequisicao.iQuantidade,
+        "aOpcoes": [],
         "iTrechoAtual": 0,
-        "iTotalTrechos": 0,
+        "iTotalTrechos": poRequisicao.iQuantidade,
     }
     oFilaJobs.put(sJobId)
-    oLogger.info("Job %s (prévia) adicionado à fila.", sJobId)
+    oLogger.info("Job %s (opções de voz, %d) adicionado à fila.", sJobId, poRequisicao.iQuantidade)
     return {"sJobId": sJobId}
+
+
+@oApp.get("/api/opcoes-voz/{sJobId}")
+def fGetOpcoesVoz(sJobId: str) -> dict:
+    oJob = oJobs.get(sJobId)
+    if oJob is None:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+
+    return {
+        "sStatus": oJob["sStatus"],
+        "iTrechoAtual": oJob.get("iTrechoAtual", 0),
+        "iTotalTrechos": oJob.get("iTotalTrechos", 0),
+        "aIndicesProntos": [o["iIndice"] for o in oJob.get("aOpcoes", [])],
+        "sErro": oJob.get("sErro"),
+    }
+
+
+@oApp.get("/api/opcoes-voz/{sJobId}/{iIndice}")
+def fGetOpcaoVozAudio(sJobId: str, iIndice: int) -> FileResponse:
+    oJob = oJobs.get(sJobId)
+    if oJob is None:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+
+    aOpcoes = oJob.get("aOpcoes", [])
+    if iIndice < 0 or iIndice >= len(aOpcoes):
+        raise HTTPException(status_code=404, detail="Opção de voz não encontrada.")
+
+    return FileResponse(aOpcoes[iIndice]["sCaminho"], media_type="audio/wav")
 
 
 @oApp.get("/api/progresso/{sJobId}")
