@@ -26,8 +26,21 @@
         </div>
       </div>
 
+      <label for="oSelecaoVoz">Voz</label>
+      <select id="oSelecaoVoz">
+        <option value="masculina">Masculina (padrão)</option>
+        <option value="feminina">Feminina</option>
+        <option value="personalizada">Personalizada</option>
+      </select>
+
       <label for="oVoz">Descrição da voz (Voice Design)</label>
-      <textarea id="oVoz" rows="2">homem, 40-50 anos, voz autoritária e confiante, tom profissional e envolvente, ideal para apresentação corporativa</textarea>
+      <textarea id="oVoz" rows="2" disabled></textarea>
+
+      <div class="oLinhaPrevia">
+        <button type="button" id="oBotaoPrevia">▶ Ouvir prévia desta voz</button>
+        <audio id="oPlayerPrevia" controls class="oOculto"></audio>
+      </div>
+      <p id="oMensagemErroPrevia" class="oErro oOculto"></p>
 
       <div class="oLinha">
         <div class="oCampo">

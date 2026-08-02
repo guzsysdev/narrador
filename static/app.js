@@ -18,7 +18,16 @@ const oLinkDownload = document.getElementById("oLinkDownload");
 
 const oMensagemErro = document.getElementById("oMensagemErro");
 
+const oSelecaoVoz = document.getElementById("oSelecaoVoz");
+const oCampoVoz = document.getElementById("oVoz");
+const oBotaoPrevia = document.getElementById("oBotaoPrevia");
+const oPlayerPrevia = document.getElementById("oPlayerPrevia");
+const oMensagemErroPrevia = document.getElementById("oMensagemErroPrevia");
+
 let nIntervaloPolling = null;
+let nIntervaloPollingPrevia = null;
+let oVozesPredefinidas = {};
+const sTextoPreviaPadrao = "Olá, eu serei o seu narrador.";
 
 function fAtualizarRotulos() {
   oValorVelocidade.textContent = `${parseFloat(oCampoVelocidade.value).toFixed(2)}x`;
@@ -63,6 +72,102 @@ async function foGetProgresso(psJobId) {
   }
   return oResposta.json();
 }
+
+async function foCarregarVozesPredefinidas() {
+  try {
+    const oResposta = await fetch("/api/vozes");
+    oVozesPredefinidas = await oResposta.json();
+    fAtualizarDescricaoVoz();
+  } catch (oErro) {
+    fExibirErro("Não foi possível carregar as vozes predefinidas.");
+  }
+}
+
+function fAtualizarDescricaoVoz() {
+  const sSelecao = oSelecaoVoz.value;
+  if (sSelecao === "personalizada") {
+    oCampoVoz.disabled = false;
+    if (!oCampoVoz.value.trim()) {
+      oCampoVoz.value = oVozesPredefinidas.masculina?.sDescricao || "";
+    }
+  } else {
+    oCampoVoz.disabled = true;
+    oCampoVoz.value = oVozesPredefinidas[sSelecao]?.sDescricao || "";
+  }
+  fOcultar(oPlayerPrevia);
+  fOcultar(oMensagemErroPrevia);
+}
+
+oSelecaoVoz.addEventListener("change", fAtualizarDescricaoVoz);
+
+async function foPostPrevia(poPayload) {
+  const oResposta = await fetch("/api/previa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(poPayload),
+  });
+
+  if (!oResposta.ok) {
+    const oErro = await oResposta.json().catch(() => ({}));
+    throw new Error(oErro.detail || "Falha ao gerar prévia.");
+  }
+  return oResposta.json();
+}
+
+function fIniciarPollingPrevia(psJobId) {
+  nIntervaloPollingPrevia = setInterval(async () => {
+    try {
+      const oStatus = await foGetProgresso(psJobId);
+
+      if (oStatus.sStatus === "concluido") {
+        clearInterval(nIntervaloPollingPrevia);
+        oPlayerPrevia.src = `/api/download/${psJobId}`;
+        fMostrar(oPlayerPrevia);
+        oPlayerPrevia.play();
+        oBotaoPrevia.disabled = false;
+        oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
+      } else if (oStatus.sStatus === "erro") {
+        clearInterval(nIntervaloPollingPrevia);
+        oMensagemErroPrevia.textContent = oStatus.sErro || "Erro ao gerar prévia.";
+        fMostrar(oMensagemErroPrevia);
+        oBotaoPrevia.disabled = false;
+        oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
+      }
+    } catch (oErro) {
+      clearInterval(nIntervaloPollingPrevia);
+      oMensagemErroPrevia.textContent = oErro.message;
+      fMostrar(oMensagemErroPrevia);
+      oBotaoPrevia.disabled = false;
+      oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
+    }
+  }, 1500);
+}
+
+oBotaoPrevia.addEventListener("click", async () => {
+  fOcultar(oMensagemErroPrevia);
+  fOcultar(oPlayerPrevia);
+  oBotaoPrevia.disabled = true;
+  oBotaoPrevia.textContent = "Gerando prévia...";
+
+  const sSelecao = oSelecaoVoz.value;
+  const sTextoPrevia = oVozesPredefinidas[sSelecao]?.sTextoPrevia || sTextoPreviaPadrao;
+
+  try {
+    const oResposta = await foPostPrevia({
+      sDescricaoVoz: oCampoVoz.value,
+      sTextoPrevia,
+      lForcarCpu: document.getElementById("oForcarCpu").checked,
+    });
+    fIniciarPollingPrevia(oResposta.sJobId);
+  } catch (oErro) {
+    oMensagemErroPrevia.textContent = oErro.message;
+    fMostrar(oMensagemErroPrevia);
+    oBotaoPrevia.disabled = false;
+    oBotaoPrevia.textContent = "▶ Ouvir prévia desta voz";
+  }
+});
+
+foCarregarVozesPredefinidas();
 
 function fIniciarPolling(psJobId) {
   nIntervaloPolling = setInterval(async () => {

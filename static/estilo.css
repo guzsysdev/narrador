@@ -49,6 +49,7 @@ label {
   color: var(--nCorTextoFraco);
 }
 
+select,
 textarea,
 input[type="text"],
 input[type="number"] {
@@ -70,6 +71,30 @@ input[type="range"] {
 .oLinha {
   display: flex;
   gap: 16px;
+}
+
+.oLinhaPrevia {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.oLinhaPrevia button {
+  margin-top: 0;
+  width: auto;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  background: #232833;
+}
+
+.oLinhaPrevia audio {
+  height: 32px;
+  flex: 1;
+}
+
+textarea:disabled {
+  opacity: 0.7;
 }
 
 .oCampo {

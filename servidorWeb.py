@@ -22,7 +22,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from motorTts import ConfiguracaoVoz, MotorNarracao, fConfigurarLogging, sVozPadrao
+from motorTts import (
+    ConfiguracaoVoz,
+    MotorNarracao,
+    fConfigurarLogging,
+    sTextoPreviaFeminina,
+    sTextoPreviaMasculina,
+    sVozPadrao,
+    sVozPadraoFeminina,
+    sVozPadraoMasculina,
+)
 
 fConfigurarLogging()
 oLogger = logging.getLogger("narrador.servidor")
@@ -48,6 +57,22 @@ class RequisicaoGeracao(BaseModel):
     lForcarCpu: bool = False
 
 
+class RequisicaoPrevia(BaseModel):
+    """Corpo da requisição POST /api/previa."""
+
+    sDescricaoVoz: str
+    sTextoPrevia: str = sTextoPreviaMasculina
+    nSeed: int = 42
+    lForcarCpu: bool = False
+
+
+# Vozes pré-definidas oferecidas na interface (nome -> descrição + frase de prévia).
+oVozesPredefinidas = {
+    "masculina": {"sDescricao": sVozPadraoMasculina, "sTextoPrevia": sTextoPreviaMasculina},
+    "feminina": {"sDescricao": sVozPadraoFeminina, "sTextoPrevia": sTextoPreviaFeminina},
+}
+
+
 # Estado dos jobs em memória (processo único, adequado para uso local/pessoal).
 oJobs: dict[str, dict] = {}
 oFilaJobs: "queue.Queue[str]" = queue.Queue()
@@ -67,36 +92,48 @@ def foObterMotor(plForcarCpu: bool) -> MotorNarracao:
 
 
 def fProcessarFilaJobs() -> None:
-    """Worker único: processa um job por vez para não estourar VRAM com
-    gerações concorrentes."""
+    """Worker único: processa um job por vez (narração completa ou prévia de
+    voz) para não estourar VRAM com gerações concorrentes."""
     while True:
         sJobId = oFilaJobs.get()
         oJob = oJobs[sJobId]
         try:
             oJob["sStatus"] = "processando"
             oMotorLocal = foObterMotor(oJob["lForcarCpu"])
-
-            def fCallback(piAtual: int, piTotal: int) -> None:
-                oJob["iTrechoAtual"] = piAtual
-                oJob["iTotalTrechos"] = piTotal
-
-            poConfigVoz = ConfiguracaoVoz(
-                sDescricaoVoz=oJob["sVoz"],
-                nVelocidade=oJob["nVelocidade"],
-                nTom=oJob["nTom"],
-                nSeed=oJob["nSeed"],
-            )
             sCaminhoSaida = str(oDirSaidas / f"{sJobId}.wav")
-            oMotorLocal.fGerarNarracaoCompleta(
-                psTexto=oJob["sTexto"],
-                poConfigVoz=poConfigVoz,
-                psCaminhoSaida=sCaminhoSaida,
-                pfCallbackProgresso=fCallback,
-            )
+
+            if oJob["sTipo"] == "previa":
+                oMotorLocal.fGerarPrevia(
+                    psDescricaoVoz=oJob["sVoz"],
+                    psTextoPrevia=oJob["sTexto"],
+                    psCaminhoSaida=sCaminhoSaida,
+                    piSeed=oJob["nSeed"],
+                )
+                oJob["iTrechoAtual"] = 1
+                oJob["iTotalTrechos"] = 1
+            else:
+
+                def fCallback(piAtual: int, piTotal: int) -> None:
+                    oJob["iTrechoAtual"] = piAtual
+                    oJob["iTotalTrechos"] = piTotal
+
+                poConfigVoz = ConfiguracaoVoz(
+                    sDescricaoVoz=oJob["sVoz"],
+                    nVelocidade=oJob["nVelocidade"],
+                    nTom=oJob["nTom"],
+                    nSeed=oJob["nSeed"],
+                )
+                oMotorLocal.fGerarNarracaoCompleta(
+                    psTexto=oJob["sTexto"],
+                    poConfigVoz=poConfigVoz,
+                    psCaminhoSaida=sCaminhoSaida,
+                    pfCallbackProgresso=fCallback,
+                )
+
             oJob["sCaminhoSaida"] = sCaminhoSaida
             oJob["sStatus"] = "concluido"
         except Exception as oErro:
-            oLogger.exception("Falha ao gerar narração do job %s", sJobId)
+            oLogger.exception("Falha ao processar job %s", sJobId)
             oJob["sStatus"] = "erro"
             oJob["sErro"] = str(oErro)
         finally:
@@ -107,6 +144,12 @@ oThreadWorker = threading.Thread(target=fProcessarFilaJobs, daemon=True)
 oThreadWorker.start()
 
 
+@oApp.get("/api/vozes")
+def fGetVozes() -> dict:
+    """Vozes predefinidas (descrição + frase de prévia) para a interface."""
+    return oVozesPredefinidas
+
+
 @oApp.post("/api/gerar")
 def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
     if not poRequisicao.sTexto.strip():
@@ -114,6 +157,7 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
 
     sJobId = str(uuid.uuid4())
     oJobs[sJobId] = {
+        "sTipo": "narracao",
         "sStatus": "na_fila",
         "sTexto": poRequisicao.sTexto,
         "sNomeArquivo": poRequisicao.sNomeArquivo,
@@ -126,7 +170,29 @@ def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
         "iTotalTrechos": 0,
     }
     oFilaJobs.put(sJobId)
-    oLogger.info("Job %s adicionado à fila.", sJobId)
+    oLogger.info("Job %s (narração) adicionado à fila.", sJobId)
+    return {"sJobId": sJobId}
+
+
+@oApp.post("/api/previa")
+def fPostPrevia(poRequisicao: RequisicaoPrevia) -> dict:
+    if not poRequisicao.sDescricaoVoz.strip():
+        raise HTTPException(status_code=400, detail="Descrição da voz vazia.")
+
+    sJobId = str(uuid.uuid4())
+    oJobs[sJobId] = {
+        "sTipo": "previa",
+        "sStatus": "na_fila",
+        "sTexto": poRequisicao.sTextoPrevia,
+        "sNomeArquivo": "previa.wav",
+        "sVoz": poRequisicao.sDescricaoVoz,
+        "nSeed": poRequisicao.nSeed,
+        "lForcarCpu": poRequisicao.lForcarCpu,
+        "iTrechoAtual": 0,
+        "iTotalTrechos": 0,
+    }
+    oFilaJobs.put(sJobId)
+    oLogger.info("Job %s (prévia) adicionado à fila.", sJobId)
     return {"sJobId": sJobId}
 
 
