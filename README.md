@@ -85,3 +85,12 @@ o áudio fica disponível para ouvir e baixar.
 
 O servidor carrega o modelo VoxCPM2 uma única vez (na primeira geração) e processa os jobs
 em fila, um por vez, para não estourar a VRAM da GPU.
+
+### Salvar uma voz permanentemente
+
+Depois de gerar prévias de Voice Design, cada opção tem um botão **💾 Salvar
+permanentemente** que publica o áudio escolhido no catálogo (`vozes/catalogo.json` +
+`vozes/*.wav`) via commit/push direto no GitHub — assim ela aparece pronta em qualquer
+sessão futura, sem precisar gerar de novo. Requer um Secret `GITHUB_TOKEN` no Colab
+(fine-grained personal access token, restrito ao repositório `guzsysdev/narrador`,
+permissão apenas "Contents: Read and write") — veja a célula correspondente no notebook.

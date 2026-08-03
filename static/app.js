@@ -263,6 +263,20 @@ function fEscolherVoz(psJobId, piIndice, poCard) {
   fMostrar(oStatusVozEscolhida);
 }
 
+async function foPostSalvarOpcaoVoz(poPayload) {
+  const oResposta = await fetch("/api/opcoes-voz/salvar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(poPayload),
+  });
+
+  if (!oResposta.ok) {
+    const oErro = await oResposta.json().catch(() => ({}));
+    throw new Error(oErro.detail || "Falha ao salvar voz permanentemente.");
+  }
+  return oResposta.json();
+}
+
 function fAdicionarCardOpcaoVoz(psJobId, piIndice) {
   const oCard = document.createElement("div");
   oCard.className = "oOpcaoVoz";
@@ -279,7 +293,31 @@ function fAdicionarCardOpcaoVoz(psJobId, piIndice) {
   oBotaoUsar.textContent = "Usar esta voz";
   oBotaoUsar.addEventListener("click", () => fEscolherVoz(psJobId, piIndice, oCard));
 
-  oCard.append(oRotulo, oAudio, oBotaoUsar);
+  const oBotaoSalvar = document.createElement("button");
+  oBotaoSalvar.type = "button";
+  oBotaoSalvar.textContent = "💾 Salvar permanentemente";
+  oBotaoSalvar.addEventListener("click", async () => {
+    const sNome = window.prompt("Nome pra essa voz (ex.: \"Locutor grave 1\"):");
+    if (!sNome) return;
+    const sGenero = window.prompt('Gênero — digite "masculina" ou "feminina":', "masculina");
+    if (sGenero !== "masculina" && sGenero !== "feminina") {
+      window.alert('Gênero inválido — precisa ser exatamente "masculina" ou "feminina".');
+      return;
+    }
+
+    oBotaoSalvar.disabled = true;
+    oBotaoSalvar.textContent = "Salvando e publicando no GitHub...";
+    try {
+      await foPostSalvarOpcaoVoz({ sJobId: psJobId, iIndice: piIndice, sNome, sGenero });
+      oBotaoSalvar.textContent = "✓ Salva permanentemente";
+    } catch (oErro) {
+      window.alert(oErro.message);
+      oBotaoSalvar.disabled = false;
+      oBotaoSalvar.textContent = "💾 Salvar permanentemente";
+    }
+  });
+
+  oCard.append(oRotulo, oAudio, oBotaoUsar, oBotaoSalvar);
   oListaOpcoesVoz.appendChild(oCard);
 }
 

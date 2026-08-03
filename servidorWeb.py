@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import random
+import re
+import shutil
+import subprocess
 import threading
 import uuid
 from pathlib import Path
@@ -56,6 +60,69 @@ for oVoz in oCatalogoVozesReais.values():
     oVoz["sCaminho"] = str(oDirVozes / oVoz["sArquivo"])
 
 
+def fsGerarIdVozUnico(psNome: str) -> str:
+    """Gera um sId de catálogo a partir do nome dado pelo usuário (slug), sem
+    colidir com nenhum já existente."""
+    sBase = re.sub(r"[^a-z0-9]+", "_", psNome.strip().lower()).strip("_") or "voz"
+    sId = sBase
+    iSufixo = 2
+    while sId in oCatalogoVozesReais:
+        sId = f"{sBase}_{iSufixo}"
+        iSufixo += 1
+    return sId
+
+
+def fSalvarCatalogoVozesEmDisco() -> None:
+    """Regrava vozes/catalogo.json a partir do dicionário em memória (sem o
+    campo sCaminho, que é derivado, não faz parte do arquivo)."""
+    aVozes = [{k: v for k, v in oVoz.items() if k != "sCaminho"} for oVoz in oCatalogoVozesReais.values()]
+    with open(oDirVozes / "catalogo.json", "w", encoding="utf-8") as oArquivo:
+        json.dump({"aVozes": aVozes}, oArquivo, ensure_ascii=False, indent=2)
+
+
+def fSalvarVozNoRepositorio(psCaminhoOrigem: str, psId: str, psGenero: str, psNome: str) -> None:
+    """Copia o WAV para vozes/, atualiza o catálogo e commita+publica no
+    GitHub — assim a voz fica disponível pra sempre, em qualquer sessão
+    futura, sem precisar salvar de novo.
+
+    Exige a variável de ambiente GITHUB_TOKEN (um Personal Access Token com
+    permissão de escrita só neste repositório) — passamos a URL com o token
+    embutido direto pro comando de push, sem tocar na config do remote
+    "origin" nem deixar o token gravado em .git/config.
+    """
+    sTokenGithub = os.environ.get("GITHUB_TOKEN")
+    if not sTokenGithub:
+        raise RuntimeError(
+            "GITHUB_TOKEN não configurado no ambiente do servidor — sem ele não dá "
+            "para publicar a voz permanentemente (veja a célula do notebook)."
+        )
+
+    sNomeArquivo = f"voz_{psId}.wav"
+    oCaminhoDestino = oDirVozes / sNomeArquivo
+    shutil.copyfile(psCaminhoOrigem, oCaminhoDestino)
+
+    oCatalogoVozesReais[psId] = {
+        "sId": psId,
+        "sArquivo": sNomeArquivo,
+        "sGenero": psGenero,
+        "sDescricao": psNome,
+        "sOrigem": "Voice Design — gerada e salva pelo usuário",
+        "sCaminho": str(oCaminhoDestino),
+    }
+    fSalvarCatalogoVozesEmDisco()
+
+    subprocess.run(["git", "config", "user.email", "narrador-bot@local"], cwd=oDirBase, check=True)
+    subprocess.run(["git", "config", "user.name", "Narrador IA (auto-save)"], cwd=oDirBase, check=True)
+    subprocess.run(
+        ["git", "add", str(oCaminhoDestino), str(oDirVozes / "catalogo.json")], cwd=oDirBase, check=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", f"Adiciona voz salva pelo usuário: {psNome}"], cwd=oDirBase, check=True
+    )
+    sUrlComToken = f"https://{sTokenGithub}@github.com/guzsysdev/narrador.git"
+    subprocess.run(["git", "push", sUrlComToken, "prod"], cwd=oDirBase, check=True)
+
+
 class RequisicaoGeracao(BaseModel):
     """Corpo da requisição POST /api/gerar."""
 
@@ -87,6 +154,15 @@ class RequisicaoPreviaReal(BaseModel):
 
     sVozRealId: str
     sTextoPrevia: str = sTextoPreviaMasculina
+
+
+class RequisicaoSalvarVoz(BaseModel):
+    """Corpo da requisição POST /api/opcoes-voz/salvar."""
+
+    sJobId: str
+    iIndice: int
+    sNome: str
+    sGenero: str
 
 
 # Vozes pré-definidas oferecidas na interface (nome -> descrição + frase de prévia).
@@ -350,6 +426,32 @@ def fGetOpcaoVozAudio(sJobId: str, iIndice: int) -> FileResponse:
         raise HTTPException(status_code=404, detail="Opção de voz não encontrada.")
 
     return FileResponse(aOpcoes[iIndice]["sCaminho"], media_type="audio/wav")
+
+
+@oApp.post("/api/opcoes-voz/salvar")
+def fPostSalvarOpcaoVoz(poRequisicao: RequisicaoSalvarVoz) -> dict:
+    if not poRequisicao.sNome.strip():
+        raise HTTPException(status_code=400, detail="Nome da voz vazio.")
+    if poRequisicao.sGenero not in ("masculina", "feminina"):
+        raise HTTPException(status_code=400, detail="Gênero deve ser 'masculina' ou 'feminina'.")
+
+    oJob = oJobs.get(poRequisicao.sJobId)
+    if oJob is None:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    aOpcoes = oJob.get("aOpcoes", [])
+    if not (0 <= poRequisicao.iIndice < len(aOpcoes)):
+        raise HTTPException(status_code=404, detail="Opção de voz não encontrada.")
+
+    sId = fsGerarIdVozUnico(poRequisicao.sNome)
+    try:
+        fSalvarVozNoRepositorio(
+            aOpcoes[poRequisicao.iIndice]["sCaminho"], sId, poRequisicao.sGenero, poRequisicao.sNome
+        )
+    except subprocess.CalledProcessError as oErro:
+        raise HTTPException(status_code=500, detail=f"Falha ao publicar no GitHub: {oErro}")
+
+    oLogger.info("Voz '%s' (sId=%s) salva permanentemente no catálogo.", poRequisicao.sNome, sId)
+    return {"sId": sId}
 
 
 @oApp.get("/api/progresso/{sJobId}")
