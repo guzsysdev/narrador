@@ -28,6 +28,13 @@ const oMensagemErroPrevia = document.getElementById("oMensagemErroPrevia");
 const oListaVozesReais = document.getElementById("oListaVozesReais");
 const oMensagemErroVozReal = document.getElementById("oMensagemErroVozReal");
 
+const oArquivoVozReferencia = document.getElementById("oArquivoVozReferencia");
+const oBotaoPreviaUpload = document.getElementById("oBotaoPreviaUpload");
+const oCardPreviaUpload = document.getElementById("oCardPreviaUpload");
+const oAudioPreviaUpload = document.getElementById("oAudioPreviaUpload");
+const oBotaoUsarUpload = document.getElementById("oBotaoUsarUpload");
+const oMensagemErroUpload = document.getElementById("oMensagemErroUpload");
+
 let nIntervaloPolling = null;
 let nIntervaloPollingOpcoesVoz = null;
 let oVozesPredefinidas = {};
@@ -41,6 +48,8 @@ let sJobIdVozEscolhida = null;
 let iIndiceVozEscolhida = null;
 let aIndicesRenderizados = [];
 let sVozRealIdEscolhida = null;
+let sCaminhoVozReferenciaUpload = null;
+const sTextoPreviaUpload = "Olá! Este é um teste com o áudio que você enviou.";
 
 function fAtualizarRotulos() {
   oValorVelocidade.textContent = `${parseFloat(oCampoVelocidade.value).toFixed(2)}x`;
@@ -111,9 +120,11 @@ async function foPostPreviaReal(poPayload) {
 function fEscolherVozReal(sVozId, poCard) {
   sVozRealIdEscolhida = sVozId;
   // Escolher uma voz real invalida qualquer escolha feita no Voice Design
-  // (as duas vias são mutuamente exclusivas — só uma vai pro /api/gerar).
+  // ou no upload (as três vias são mutuamente exclusivas — só uma vai pro
+  // /api/gerar).
   sJobIdVozEscolhida = null;
   iIndiceVozEscolhida = null;
+  sCaminhoVozReferenciaUpload = null;
   fOcultar(oStatusVozEscolhida);
 
   document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
@@ -194,6 +205,74 @@ async function foCarregarVozesReais() {
 
 foCarregarVozesReais();
 
+async function foPostUploadVozReferencia(oArquivo, sTextoPrevia) {
+  const oFormData = new FormData();
+  oFormData.append("oArquivo", oArquivo);
+  oFormData.append("sTextoPrevia", sTextoPrevia);
+
+  const oResposta = await fetch("/api/upload-voz-referencia", { method: "POST", body: oFormData });
+  if (!oResposta.ok) {
+    const oErro = await oResposta.json().catch(() => ({}));
+    throw new Error(oErro.detail || "Falha ao enviar áudio.");
+  }
+  return oResposta.json();
+}
+
+function fEscolherVozUpload(sCaminho, poCard) {
+  sCaminhoVozReferenciaUpload = sCaminho;
+  // Upload invalida qualquer escolha feita em vozes reais ou Voice Design.
+  sVozRealIdEscolhida = null;
+  sJobIdVozEscolhida = null;
+  iIndiceVozEscolhida = null;
+  fOcultar(oStatusVozEscolhida);
+
+  document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
+  poCard.classList.add("oOpcaoVozEscolhida");
+}
+
+oBotaoPreviaUpload.addEventListener("click", async () => {
+  const oArquivo = oArquivoVozReferencia.files[0];
+  if (!oArquivo) {
+    oMensagemErroUpload.textContent = "Escolha um arquivo de áudio primeiro.";
+    fMostrar(oMensagemErroUpload);
+    return;
+  }
+
+  fOcultar(oMensagemErroUpload);
+  fOcultar(oCardPreviaUpload);
+  oBotaoPreviaUpload.disabled = true;
+  oBotaoPreviaUpload.textContent = "Enviando e gerando...";
+
+  try {
+    const oResposta = await foPostUploadVozReferencia(oArquivo, sTextoPreviaUpload);
+    const nIntervalo = setInterval(async () => {
+      const oStatus = await foGetProgresso(oResposta.sJobId);
+      if (oStatus.sStatus === "concluido") {
+        clearInterval(nIntervalo);
+        oAudioPreviaUpload.src = `/api/download/${oResposta.sJobId}`;
+        fMostrar(oCardPreviaUpload);
+        oAudioPreviaUpload.play();
+        oBotaoPreviaUpload.disabled = false;
+        oBotaoPreviaUpload.textContent = "▶ Gerar prévia";
+
+        oBotaoUsarUpload.onclick = () =>
+          fEscolherVozUpload(oResposta.sCaminhoVozReferenciaUpload, oCardPreviaUpload);
+      } else if (oStatus.sStatus === "erro") {
+        clearInterval(nIntervalo);
+        oMensagemErroUpload.textContent = oStatus.sErro || "Erro ao gerar prévia.";
+        fMostrar(oMensagemErroUpload);
+        oBotaoPreviaUpload.disabled = false;
+        oBotaoPreviaUpload.textContent = "▶ Gerar prévia";
+      }
+    }, 1500);
+  } catch (oErro) {
+    oMensagemErroUpload.textContent = oErro.message;
+    fMostrar(oMensagemErroUpload);
+    oBotaoPreviaUpload.disabled = false;
+    oBotaoPreviaUpload.textContent = "▶ Gerar prévia";
+  }
+});
+
 async function foCarregarVozesPredefinidas() {
   try {
     const oResposta = await fetch("/api/vozes");
@@ -254,7 +333,8 @@ async function foGetOpcoesVoz(psJobId) {
 function fEscolherVoz(psJobId, piIndice, poCard) {
   sJobIdVozEscolhida = psJobId;
   iIndiceVozEscolhida = piIndice;
-  sVozRealIdEscolhida = null; // Voice Design e voz real são mutuamente exclusivos
+  sVozRealIdEscolhida = null; // Voice Design, voz real e upload são mutuamente exclusivos
+  sCaminhoVozReferenciaUpload = null;
 
   document.querySelectorAll(".oOpcaoVoz").forEach((oEl) => oEl.classList.remove("oOpcaoVozEscolhida"));
   poCard.classList.add("oOpcaoVozEscolhida");
@@ -437,6 +517,7 @@ oFormGeracao.addEventListener("submit", async (oEvento) => {
     sJobIdVozEscolhida,
     iIndiceVozEscolhida,
     sVozRealId: sVozRealIdEscolhida,
+    sCaminhoVozReferenciaUpload,
   };
 
   try {

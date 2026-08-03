@@ -23,7 +23,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -32,6 +32,7 @@ from motorTts import (
     ConfiguracaoVoz,
     MotorNarracao,
     fConfigurarLogging,
+    fConverterAudioParaWav,
     sTextoPreviaFeminina,
     sTextoPreviaMasculina,
     sVozPadrao,
@@ -48,6 +49,14 @@ oDirBase = Path(__file__).parent
 oDirSaidas = oDirBase / "saidas"
 oDirSaidas.mkdir(exist_ok=True)
 oDirVozes = oDirBase / "vozes"
+oDirUploads = oDirBase / "uploads"
+oDirUploads.mkdir(exist_ok=True)
+
+# Extensões aceitas no upload de áudio de referência — a conversão em si
+# (fConverterAudioParaWav) tenta soundfile e depois librosa, então isto é só
+# uma checagem rápida para rejeitar arquivos claramente errados com uma
+# mensagem melhor do que o erro cru do decodificador.
+sExtensoesAudioPermitidas = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac"}
 
 oApp.mount("/estatico", StaticFiles(directory=str(oDirBase / "static")), name="estatico")
 
@@ -139,6 +148,9 @@ class RequisicaoGeracao(BaseModel):
     # Ou: usa uma voz real do catálogo (vozes/catalogo.json) como referência
     # de clonagem — tem prioridade sobre sJobIdVozEscolhida/iIndiceVozEscolhida.
     sVozRealId: Optional[str] = None
+    # Ou: usa um áudio de referência enviado pelo usuário (caminho retornado
+    # por POST /api/upload-voz-referencia) — tem prioridade sobre todos acima.
+    sCaminhoVozReferenciaUpload: Optional[str] = None
 
 
 class RequisicaoOpcoesVoz(BaseModel):
@@ -338,13 +350,71 @@ def fPostPreviaReal(poRequisicao: RequisicaoPreviaReal) -> dict:
     return {"sJobId": sJobId}
 
 
+def flCaminhoUploadValido(psCaminho: str) -> bool:
+    """Confirma que o caminho é um WAV que nós mesmos geramos em oDirUploads
+    (não um caminho arbitrário do cliente) — evita servir/ler qualquer arquivo
+    do disco a partir de um caminho informado na requisição."""
+    try:
+        oCaminho = Path(psCaminho).resolve()
+    except (OSError, ValueError):
+        return False
+    return oCaminho.parent == oDirUploads.resolve() and oCaminho.suffix == ".wav" and oCaminho.is_file()
+
+
+@oApp.post("/api/upload-voz-referencia")
+async def fPostUploadVozReferencia(
+    oArquivo: UploadFile = File(...), sTextoPrevia: str = Form(sTextoPreviaMasculina)
+) -> dict:
+    """Recebe um áudio de referência enviado pelo usuário, converte para WAV e
+    já dispara um job de prévia com essa voz clonada — mesmo fluxo de
+    /api/previa-real, mas a partir de um upload em vez do catálogo."""
+    sExtensao = Path(oArquivo.filename or "").suffix.lower()
+    if sExtensao not in sExtensoesAudioPermitidas:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato '{sExtensao or '(sem extensão)'}' não suportado. "
+            "Envie WAV, MP3, OGG, FLAC, M4A ou AAC.",
+        )
+
+    sIdUpload = str(uuid.uuid4())
+    oCaminhoOriginal = oDirUploads / f"{sIdUpload}_original{sExtensao}"
+    with open(oCaminhoOriginal, "wb") as oArquivoDestino:
+        shutil.copyfileobj(oArquivo.file, oArquivoDestino)
+
+    oCaminhoWav = oDirUploads / f"{sIdUpload}.wav"
+    try:
+        fConverterAudioParaWav(str(oCaminhoOriginal), str(oCaminhoWav))
+    except Exception as oErro:
+        raise HTTPException(status_code=400, detail=f"Não foi possível ler o áudio enviado: {oErro}")
+    finally:
+        oCaminhoOriginal.unlink(missing_ok=True)
+
+    sJobId = str(uuid.uuid4())
+    oJobs[sJobId] = {
+        "sTipo": "previa_real",
+        "sStatus": "na_fila",
+        "sTexto": sTextoPrevia,
+        "sNomeArquivo": "previa.wav",
+        "sCaminhoVozReferencia": str(oCaminhoWav),
+        "iTrechoAtual": 0,
+        "iTotalTrechos": 1,
+    }
+    oFilaJobs.put(sJobId)
+    oLogger.info("Job %s (prévia de voz enviada pelo usuário) adicionado à fila.", sJobId)
+    return {"sJobId": sJobId, "sCaminhoVozReferenciaUpload": str(oCaminhoWav)}
+
+
 @oApp.post("/api/gerar")
 def fPostGerar(poRequisicao: RequisicaoGeracao) -> dict:
     if not poRequisicao.sTexto.strip():
         raise HTTPException(status_code=400, detail="Texto da narração vazio.")
 
     sCaminhoVozReferencia = None
-    if poRequisicao.sVozRealId is not None:
+    if poRequisicao.sCaminhoVozReferenciaUpload is not None:
+        if not flCaminhoUploadValido(poRequisicao.sCaminhoVozReferenciaUpload):
+            raise HTTPException(status_code=400, detail="Áudio de referência enviado não encontrado.")
+        sCaminhoVozReferencia = poRequisicao.sCaminhoVozReferenciaUpload
+    elif poRequisicao.sVozRealId is not None:
         oVozReal = oCatalogoVozesReais.get(poRequisicao.sVozRealId)
         if oVozReal is None:
             raise HTTPException(status_code=400, detail="Voz real não encontrada no catálogo.")

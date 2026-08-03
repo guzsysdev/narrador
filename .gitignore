@@ -9,8 +9,9 @@ venv/
 __pycache__/
 *.pyc
 
-# Saídas de áudio geradas
+# Saídas de áudio geradas / uploads de referência do usuário
 saidas/
+uploads/
 *.wav
 # ...exceto os clipes do catálogo de vozes reais (fazem parte do projeto)
 !vozes/*.wav

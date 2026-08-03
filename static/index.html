@@ -30,6 +30,17 @@
       <div id="oListaVozesReais" class="oListaOpcoesVoz"></div>
       <p id="oMensagemErroVozReal" class="oErro oOculto"></p>
 
+      <label for="oArquivoVozReferencia">Ou envie um áudio seu como referência (10-30s, uma pessoa só falando, sem música/ruído de fundo)</label>
+      <div class="oLinhaPrevia">
+        <input type="file" id="oArquivoVozReferencia" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,audio/*" />
+        <button type="button" id="oBotaoPreviaUpload">▶ Gerar prévia</button>
+      </div>
+      <div id="oCardPreviaUpload" class="oOpcaoVoz oOculto">
+        <audio id="oAudioPreviaUpload" controls></audio>
+        <button type="button" id="oBotaoUsarUpload">Usar esta voz</button>
+      </div>
+      <p id="oMensagemErroUpload" class="oErro oOculto"></p>
+
       <details class="oDetalhesUpload">
         <summary>Ou usar Voice Design (gerar uma voz do zero por descrição — qualidade mais instável)</summary>
 

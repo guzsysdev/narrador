@@ -193,6 +193,26 @@ def fSalvarWav(paAudio, pnTaxaAmostragem: int, psCaminho: str) -> None:
     sf.write(psCaminho, paAudio, pnTaxaAmostragem, subtype="PCM_16")
 
 
+def fConverterAudioParaWav(psCaminhoOrigem: str, psCaminhoDestino: str) -> None:
+    """Normaliza um áudio de referência enviado pelo usuário (qualquer formato
+    que soundfile ou librosa consigam ler) para o WAV PCM_16 que o
+    reference_wav_path do VoxCPM2 espera.
+
+    Tenta soundfile primeiro (WAV/FLAC/OGG nativos, sem dependência externa);
+    cai para librosa (via audioread/ffmpeg) para formatos como MP3/M4A.
+    """
+    import soundfile as sf
+
+    try:
+        paAudio, nTaxaAmostragem = sf.read(psCaminhoOrigem)
+    except Exception:
+        import librosa
+
+        paAudio, nTaxaAmostragem = librosa.load(psCaminhoOrigem, sr=None, mono=True)
+
+    fSalvarWav(paAudio, nTaxaAmostragem, psCaminhoDestino)
+
+
 def fConcatenarWavs(
     paCaminhos: list[Path], poCaminhoSaida: Path, pnSilencioEntreTrechos: float = 0.35
 ) -> None:
