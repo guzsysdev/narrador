@@ -29,6 +29,13 @@ baixar o WAV.
 4. Se a sessão do Colab cair (limite do plano grátis), volte e rode "Executar tudo"
    de novo pra gerar um novo link
 
+Se a mensagem for de **cota de GPU esgotada** (em vez de sessão caída), o Colab bloqueia
+temporariamente antes mesmo de chegar no limite normal de sessão — costuma liberar
+sozinho depois de algumas horas. Enquanto isso, `kaggle_gerar_narracao.ipynb` é um
+notebook equivalente pro [Kaggle](https://www.kaggle.com/), que tem uma cota de GPU
+separada da do Colab (ative **Accelerator → GPU** e **Internet → On** nas configurações
+do notebook antes de rodar).
+
 Se você tiver GPU própria, dá pra rodar tudo localmente em vez do Colab (veja
 "Instalação" abaixo) — o notebook existe só para suprir a falta de GPU local.
 
