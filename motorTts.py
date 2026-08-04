@@ -101,27 +101,40 @@ def fsDetectarDispositivo(plForcarCpu: bool = False) -> str:
 
 
 def faDividirTexto(psTexto: str, piTamanhoMaximo: int = 350) -> list[str]:
-    """Divide o texto da narração em trechos, um por linha do roteiro.
+    """Divide o texto da narração em trechos, agrupando linhas consecutivas do
+    roteiro até piTamanhoMaximo caracteres.
 
     Necessário porque o VoxCPM2 é pensado para gerar frase/parágrafo por vez;
     gerar 10 minutos de narração em uma única chamada tende a degradar
-    qualidade e estabilidade. Cada linha do roteiro normalmente já representa
-    um "beat" da narração (uma ação de tela em um passo a passo), então é
-    tratada como um trecho próprio — isso preserva o ritmo/pausas que o autor
-    do roteiro já pensou, em vez de reagrupar por contagem de caracteres e
-    misturar beats diferentes num mesmo trecho. Uma linha só é subdividida por
-    sentença (via _faDividirPorSentenca) se ela sozinha ultrapassar
-    piTamanhoMaximo caracteres. Cada trecho é depois gerado com a mesma
-    descrição de voz e a mesma seed para manter o timbre consistente.
+    qualidade e estabilidade. Cada chamada de geração é independente e
+    estocástica — mesmo clonando a mesma voz de referência em todas, a
+    entonação de cada uma varia um pouco, o que soa como o tom "alternando"
+    quando roteiros com muitas linhas curtas (um "beat" por linha) geram uma
+    chamada isolada por linha. Agrupar linhas curtas consecutivas num mesmo
+    trecho reduz o número de chamadas e, com isso, esses saltos de entonação
+    — o corte só acontece quando o próximo trecho ultrapassaria o limite, ou
+    quando uma linha sozinha já ultrapassa o limite (aí ela é subdividida por
+    sentença via _faDividirPorSentenca). Cada trecho é depois gerado com a
+    mesma descrição de voz e a mesma seed para manter o timbre consistente.
     """
     aLinhas = [sLinha.strip() for sLinha in psTexto.splitlines() if sLinha.strip()]
     aTrechos: list[str] = []
+    sTrechoAtual = ""
 
     for sLinha in aLinhas:
-        if len(sLinha) <= piTamanhoMaximo:
-            aTrechos.append(sLinha)
-        else:
+        if len(sLinha) > piTamanhoMaximo:
+            if sTrechoAtual:
+                aTrechos.append(sTrechoAtual)
+                sTrechoAtual = ""
             aTrechos.extend(_faDividirPorSentenca(sLinha, piTamanhoMaximo))
+        elif len(sTrechoAtual) + len(sLinha) + 1 <= piTamanhoMaximo:
+            sTrechoAtual = f"{sTrechoAtual} {sLinha}".strip()
+        else:
+            aTrechos.append(sTrechoAtual)
+            sTrechoAtual = sLinha
+
+    if sTrechoAtual:
+        aTrechos.append(sTrechoAtual)
 
     return aTrechos
 
